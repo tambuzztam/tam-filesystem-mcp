@@ -1,6 +1,6 @@
 # tam-filesystem-mcp
 
-**Enhanced MCP filesystem server with Obsidian-aware task and prompt management for philosophical counseling workflows**
+**Enhanced MCP filesystem server with Obsidian-aware task and prompt management for [Tam](https://tam.buzz/) workflows**
 
 ## Overview
 
@@ -11,18 +11,21 @@ This project extends the canonical MCP filesystem server to create a task-centri
 ## Key Features
 
 ### 🎯 **Intelligent Prompt Management**
+
 - **`get_prompted` function**: Discover, load, and dynamically process prompt templates
 - **Fuzzy matching**: Find prompts by partial names, aliases, or content
 - **Variable substitution**: Dynamic prompt generation with contextual variables
 - **Obsidian integration**: Wikilink resolution, frontmatter parsing, template syntax
 
 ### 📋 **Task Workflow Integration**  
+
 - **Task creation**: Generate tasks from templates with auto-populated metadata
 - **Progress tracking**: Programmatic checklist management and completion analytics
 - **Status analysis**: Comprehensive task metrics with next actions and blockers
 - **Relationship mapping**: Bidirectional links between tasks and prompts
 
 ### 🔗 **Obsidian-Native Features**
+
 - Wikilink syntax support: `[[prompt-name]]`
 - YAML frontmatter parsing for metadata
 - Templater template syntax processing
@@ -40,7 +43,7 @@ This project extends the canonical MCP filesystem server to create a task-centri
 
 ### Project Structure
 
-```
+```text
 tam-filesystem-mcp/
 ├── src/
 │   ├── index.ts              # Main server with enhanced registration
@@ -58,7 +61,8 @@ tam-filesystem-mcp/
 ## Installation & Usage
 
 ### Prerequisites
-- Node.js 18+ 
+
+- Node.js 18+
 - TypeScript
 - MCP-compatible client (e.g., Claude Desktop)
 
@@ -92,6 +96,7 @@ tam-filesystem-mcp /path/to/obsidian/vault
 ## Enhanced Tools
 
 ### `get_prompted`
+
 **The flagship function** - Intelligently discover, load, and process prompt templates
 
 ```typescript
@@ -144,7 +149,7 @@ console.log(\`Completion: \${status.completionPercentage}%\`);
 
 ## Development Status
 
-🚧 **Current Phase: Project Setup Complete** 
+🚧 **Current Phase: Project Setup Complete**
 
 - [x] ✅ Project structure and configuration
 - [x] ✅ Type definitions and architecture  
@@ -159,23 +164,27 @@ console.log(\`Completion: \${status.completionPercentage}%\`);
 ### Implementation Roadmap
 
 **Phase 1: Core Prompt System**
+
 - Basic variable substitution
 - Frontmatter parsing for prompt metadata  
 - Fuzzy search for prompt discovery
 
 **Phase 2: Obsidian Integration**
+
 - Wikilink resolution capability
 - Templater syntax processing
 - Alias-based prompt discovery
 - Tag-based prompt filtering
 
 **Phase 3: Task Management**  
+
 - Task creation with template integration
 - Checklist parsing and progress tracking
 - Task status analytics and completion metrics
 - Task-prompt relationship system
 
 **Phase 4: Advanced Features**
+
 - Prompt usage tracking and analytics
 - Task dependency mapping
 - Automated task generation
