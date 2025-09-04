@@ -1,0 +1,25 @@
+{
+  "vault": {
+    "name": "Test Vault",
+    "description": "Test vault for tam-filesystem-mcp Phase 1 functionality"
+  },
+  "paths": {
+    "prompts": "prompts",
+    "tasks": "tasks",
+    "templates": "templates"
+  },
+  "features": {
+    "obsidianFeatures": true,
+    "cachePrompts": false,
+    "templaterLite": true,
+    "wikilinkResolution": false
+  },
+  "search": {
+    "maxResults": 10,
+    "fuzzyThreshold": 0.6
+  },
+  "variables": {
+    "strictValidation": false,
+    "defaultDateFormat": "YYYY-MM-DD"
+  }
+}

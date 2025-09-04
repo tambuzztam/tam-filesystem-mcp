@@ -6,6 +6,7 @@
  */
 
 import { VaultConfig, TemplateContext, TemplateVariable } from './types.js';
+import { basename } from 'path';
 
 export class TemplateProcessor {
   constructor(private config: VaultConfig) {}
@@ -16,10 +17,9 @@ export class TemplateProcessor {
   processTemplate(
     content: string,
     variables: Record<string, any> = {},
-    context: Partial<TemplateContext> = {}
+    context: Partial<TemplateContext> = {},
+    filePath?: string
   ): string {
-    console.log('processTemplate: Implementation pending');
-
     // Create full context
     const fullContext: TemplateContext = {
       variables: this.createVariableMap(variables),
@@ -28,14 +28,21 @@ export class TemplateProcessor {
       ...context,
     };
 
-    // Implementation will:
-    // 1. Handle Templater syntax: <% code %>
-    // 2. Process JavaScript expressions
-    // 3. Handle date functions: tp.date.now()
-    // 4. Support conditional logic
-    // 5. Variable substitution: {{variable}}
+    let processedContent = content;
 
-    return this.substituteVariables(content, variables);
+    // 1. Process Templater functions first
+    if (this.config.templaterLite) {
+      processedContent = this.resolveTemplaterFunctions(
+        processedContent,
+        fullContext,
+        filePath
+      );
+    }
+
+    // 2. Handle variable substitution
+    processedContent = this.substituteVariables(processedContent, variables);
+
+    return processedContent;
   }
 
   /**
@@ -72,21 +79,107 @@ export class TemplateProcessor {
   }
 
   /**
-   * Resolve Templater function calls (stub)
+   * Resolve Templater function calls - Phase 1 implementation
    */
   private resolveTemplaterFunctions(
     content: string,
-    context: TemplateContext
+    context: TemplateContext,
+    filePath?: string
   ): string {
-    console.log('resolveTemplaterFunctions: Implementation pending');
+    let processedContent = content;
 
-    // Implementation will handle:
-    // - tp.date.now()
-    // - tp.file.title
-    // - tp.file.folder()
-    // - Custom functions
+    // 1. Handle tp.date.now() - current date/time
+    processedContent = processedContent.replace(
+      /tp\.date\.now\(\s*(?:"([^"]*)"|'([^']*)')?\s*\)/g,
+      (match, format1, format2) => {
+        const format =
+          format1 || format2 || this.config.defaultDateFormat || 'YYYY-MM-DD';
+        return this.formatDate(context.currentDate, format);
+      }
+    );
 
-    return content;
+    // 2. Handle tp.file.title - extract title from file path
+    if (filePath) {
+      const fileTitle = this.extractFileTitle(filePath);
+      processedContent = processedContent.replace(
+        /tp\.file\.title/g,
+        fileTitle
+      );
+    }
+
+    // 3. Handle tp.file.folder() - extract folder name
+    if (filePath) {
+      const folderName = this.extractFolderName(filePath);
+      processedContent = processedContent.replace(
+        /tp\.file\.folder\(\s*\)/g,
+        folderName
+      );
+    }
+
+    // 4. Handle tp.date.today() - current date without time
+    processedContent = processedContent.replace(
+      /tp\.date\.today\(\s*(?:"([^"]*)"|'([^']*)')?\s*\)/g,
+      (match, format1, format2) => {
+        const format = format1 || format2 || 'YYYY-MM-DD';
+        return this.formatDate(context.currentDate, format);
+      }
+    );
+
+    // 5. Handle tp.date.tomorrow() - tomorrow's date
+    processedContent = processedContent.replace(
+      /tp\.date\.tomorrow\(\s*(?:"([^"]*)"|'([^']*)')?\s*\)/g,
+      (match, format1, format2) => {
+        const format = format1 || format2 || 'YYYY-MM-DD';
+        const tomorrow = new Date(context.currentDate);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        return this.formatDate(tomorrow, format);
+      }
+    );
+
+    return processedContent;
+  }
+
+  /**
+   * Format date according to common patterns
+   */
+  private formatDate(date: Date, format: string): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+
+    return format
+      .replace(/YYYY/g, String(year))
+      .replace(/YY/g, String(year).slice(-2))
+      .replace(/MM/g, month)
+      .replace(/DD/g, day)
+      .replace(/HH/g, hours)
+      .replace(/mm/g, minutes)
+      .replace(/ss/g, seconds)
+      .replace(/M/g, String(date.getMonth() + 1))
+      .replace(/D/g, String(date.getDate()))
+      .replace(/H/g, String(date.getHours()))
+      .replace(/m/g, String(date.getMinutes()))
+      .replace(/s/g, String(date.getSeconds()));
+  }
+
+  /**
+   * Extract file title from file path
+   */
+  private extractFileTitle(filePath: string): string {
+    const fileName = basename(filePath);
+    // Remove extension and return
+    return fileName.replace(/\.[^/.]+$/, '');
+  }
+
+  /**
+   * Extract folder name from file path
+   */
+  private extractFolderName(filePath: string): string {
+    const parts = filePath.split('/');
+    return parts.length > 1 ? parts[parts.length - 2] : '';
   }
 
   /**
@@ -94,7 +187,7 @@ export class TemplateProcessor {
    */
   private processConditionals(
     content: string,
-    context: TemplateContext
+    _context: TemplateContext
   ): string {
     console.log('processConditionals: Implementation pending');
 
