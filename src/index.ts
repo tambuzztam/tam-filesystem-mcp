@@ -17,11 +17,11 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 
 // These are imported for future use when implementing tool handlers
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+
 const _futureUse = { CallToolRequestSchema, ListToolsRequestSchema };
 
 import { EnhancedFilesystemServer } from './filesystem.js';
-import { VaultConfig } from './types.js';
+import { loadVaultConfig } from './config.js';
 
 // Parse command line arguments
 const args = process.argv.slice(2);
@@ -37,19 +37,11 @@ if (args.length === 0) {
   process.exit(1);
 }
 
-// Default vault configuration
-const defaultConfig: VaultConfig = {
-  allowedDirectories: args,
-  promptsPath: 'tasks/prompts',
-  tasksPath: 'tasks',
-  templatesPath: 'utilities/templates',
-  enableObsidianFeatures: true,
-  cachePrompts: true,
-  maxSearchResults: 10,
-};
+// Load vault configuration from .tam-filesystem-mcp.json file
+const vaultConfig = loadVaultConfig(args);
 
 // Initialize enhanced server
-const enhancedServer = new EnhancedFilesystemServer(defaultConfig);
+const enhancedServer = new EnhancedFilesystemServer(vaultConfig);
 
 // Create MCP server instance
 const server = new Server(
@@ -74,9 +66,14 @@ async function main() {
 
   console.error('tam-filesystem-mcp: Enhanced filesystem server started');
   console.error(
-    `Allowed directories: ${defaultConfig.allowedDirectories.join(', ')}`
+    `Allowed directories: ${vaultConfig.allowedDirectories.join(', ')}`
   );
-  console.error('Obsidian features: enabled');
+  console.error(
+    `Obsidian features: ${vaultConfig.enableObsidianFeatures ? 'enabled' : 'disabled'}`
+  );
+  console.error(
+    `Templater-lite: ${vaultConfig.templaterLite ? 'enabled' : 'disabled'}`
+  );
 }
 
 main().catch(error => {

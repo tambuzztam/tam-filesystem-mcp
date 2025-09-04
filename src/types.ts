@@ -11,6 +11,39 @@ export interface VaultConfig {
   enableObsidianFeatures: boolean;
   cachePrompts: boolean;
   maxSearchResults: number;
+  // New configuration options
+  templaterLite?: boolean;
+  wikilinkResolution?: boolean;
+  fuzzyThreshold?: number;
+  strictVariables?: boolean;
+  defaultDateFormat?: string;
+}
+
+// Vault configuration file structure
+export interface VaultConfigFile {
+  vault: {
+    name: string;
+    description?: string;
+  };
+  paths: {
+    prompts: string;
+    tasks: string;
+    templates: string;
+  };
+  features: {
+    obsidianFeatures: boolean;
+    cachePrompts: boolean;
+    templaterLite: boolean;
+    wikilinkResolution: boolean;
+  };
+  search: {
+    maxResults: number;
+    fuzzyThreshold: number;
+  };
+  variables: {
+    strictValidation: boolean;
+    defaultDateFormat: string;
+  };
 }
 
 // Obsidian-specific types
@@ -30,18 +63,82 @@ export interface VariableDefinition {
   description?: string;
 }
 
-// Prompt system types
+// Prompt system types - Enhanced for Phase 1
 export interface PromptOptions {
   includeWikilinks?: boolean;
   processTemplater?: boolean;
   searchPaths?: string[];
   strictVariables?: boolean;
+  searchMode?: 'auto' | 'exact' | 'alias' | 'fuzzy' | 'content' | 'path';
+  promptsDir?: string;
+  resolveWikilinks?: boolean | { mode: 'markdown' | 'path'; embed?: boolean };
+  templater?: boolean;
+  returnCandidates?: boolean;
+  maxCandidates?: number;
+  fuzzyThreshold?: number;
 }
 
 export interface PromptDiscoveryResult {
   path: string;
   match: 'exact' | 'alias' | 'fuzzy' | 'content';
   score?: number;
+}
+
+// Enhanced getPrompted types
+export interface GetPromptedRequest {
+  promptName: string;
+  variables?: Record<string, any>;
+  options?: PromptOptions;
+}
+
+export interface PromptHit {
+  id: string;
+  name: string;
+  path: string;
+  score: number;
+  reason: 'exact' | 'alias' | 'fuzzy' | 'content';
+  title?: string;
+  aliases?: string[];
+  tags?: string[];
+}
+
+export interface VariableSpec {
+  name: string;
+  description?: string;
+  type: 'string' | 'number' | 'boolean' | 'date';
+  required: boolean;
+  default?: any;
+  options?: any[];
+}
+
+export interface GetPromptedResult {
+  resolved: boolean;
+  autoApplyRecommended: boolean;
+  confidence: number;
+  chosen?: {
+    id: string;
+    name: string;
+    path: string;
+    title: string;
+    aliases: string[];
+    tags: string[];
+    frontmatterExcerpt?: string;
+  };
+  content: string;
+  variablesUsed: Record<string, any>;
+  missingVariables: VariableSpec[];
+  candidates: PromptHit[];
+  unresolvedLinks: string[];
+  processing: {
+    templaterProcessed: boolean;
+    wikilinkResolution: boolean;
+    variableInterpolation: boolean;
+  };
+  error?: {
+    code: string;
+    message: string;
+    details?: any;
+  };
 }
 
 // Task management types
