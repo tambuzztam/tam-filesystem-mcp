@@ -1,6 +1,6 @@
 /**
  * Obsidian-specific utilities
- * 
+ *
  * Handles Obsidian vault conventions including:
  * - Frontmatter parsing
  * - Wikilink resolution
@@ -19,12 +19,12 @@ export class ObsidianUtils {
    */
   parseObsidianFile(content: string): ObsidianFile {
     const { data: frontmatter, content: body } = matter(content);
-    
+
     return {
       frontmatter,
       content: body,
       aliases: frontmatter.aliases || [],
-      tags: frontmatter.tags || []
+      tags: frontmatter.tags || [],
     };
   }
 
@@ -34,7 +34,7 @@ export class ObsidianUtils {
    */
   async resolveWikilinks(content: string): Promise<string> {
     // Implementation stub
-    console.log("resolveWikilinks: Implementation pending");
+    console.log('resolveWikilinks: Implementation pending');
     return content;
   }
 
