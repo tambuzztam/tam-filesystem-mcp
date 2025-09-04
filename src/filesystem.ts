@@ -411,12 +411,50 @@ export class EnhancedFilesystemServer {
 
       // Format response based on success/failure
       if (result.resolved) {
-        const response = [
-          {
+        const response = [];
+
+        // Show execution results first if any actions were performed
+        if (result.autoExecuted && result.executionResults.length > 0) {
+          const executionSummary = result.executionResults
+            .map(exec =>
+              exec.success ? `✅ ${exec.message}` : `❌ ${exec.message}`
+            )
+            .join('\n');
+
+          response.push({
             type: 'text' as const,
-            text: `# Prompt: ${result.chosen!.title}\n\n${result.content}`,
-          },
-        ];
+            text: `# Actions Executed\n\n${executionSummary}\n\n---\n`,
+          });
+        }
+
+        // Show prompt content (but de-emphasize if actions were executed)
+        const promptTitle = result.autoExecuted
+          ? `## Source Prompt: ${result.chosen!.title}`
+          : `# Prompt: ${result.chosen!.title}`;
+
+        response.push({
+          type: 'text' as const,
+          text: `${promptTitle}\n\n${result.content}`,
+        });
+
+        // Add action recommendations if any weren't executed
+        const pendingActions = result.actionRecommendations.filter(
+          a => !result.executionResults.some(r => r.actionType === a.type)
+        );
+
+        if (pendingActions.length > 0) {
+          const actionsList = pendingActions
+            .map(
+              action =>
+                `- ${action.description} (confidence: ${Math.round(action.confidence * 100)}%)`
+            )
+            .join('\n');
+
+          response.push({
+            type: 'text' as const,
+            text: `\n\n---\n**Suggested Actions:**\n${actionsList}`,
+          });
+        }
 
         // Add metadata if available
         if (result.chosen!.frontmatterExcerpt) {
@@ -441,6 +479,11 @@ export class EnhancedFilesystemServer {
         processingInfo.push(
           `Templater processed: ${result.processing.templaterProcessed}`
         );
+        if (result.actionRecommendations.length > 0) {
+          processingInfo.push(
+            `Actions detected: ${result.actionRecommendations.length}`
+          );
+        }
 
         if (processingInfo.length > 0) {
           response.push({

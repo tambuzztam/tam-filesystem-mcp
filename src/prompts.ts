@@ -12,6 +12,8 @@ import {
   PromptHit,
   VariableSpec,
   EnhancedMcpError,
+  ActionRecommendation,
+  ExecutionResult,
 } from './types.js';
 import { ObsidianUtils } from './obsidian.js';
 import { TemplateProcessor } from './templates.js';
@@ -21,8 +23,8 @@ import {
   isAllowedFileType,
 } from './security.js';
 import { resolveVaultPath } from './config.js';
-import { readFile, readdir } from 'fs/promises';
-import { join, basename, extname } from 'path';
+import { readFile, readdir, writeFile, mkdir } from 'fs/promises';
+import { join, basename, extname, dirname } from 'path';
 
 export class PromptManager {
   private templateProcessor: TemplateProcessor;
@@ -108,13 +110,44 @@ export class PromptManager {
         );
       }
 
-      // 6. Create successful result
+      // 6. Analyze content for actionable patterns
+      const actionRecommendations = this.analyzeForActions(
+        processedContent,
+        mergedVariables,
+        promptPath
+      );
+
+      // 7. Execute high-confidence actions automatically
+      const executionResults: ExecutionResult[] = [];
+      const autoExecutable = actionRecommendations.filter(
+        a => a.autoExecutable && a.confidence > 0.8
+      );
+
+      if (autoExecutable.length > 0) {
+        for (const action of autoExecutable) {
+          try {
+            const result = await this.executeAction(action);
+            executionResults.push(result);
+          } catch (error: any) {
+            executionResults.push({
+              actionType: action.type,
+              success: false,
+              message: `Failed to execute ${action.type}: ${error.message}`,
+              details: error,
+            });
+          }
+        }
+      }
+
+      // 8. Create successful result with action information
       return this.createSuccessResult(
         promptPath,
         processedContent,
         substitutionResult.usedVariables,
         substitutionResult.missingVariables,
-        frontmatter
+        frontmatter,
+        actionRecommendations,
+        executionResults
       );
     } catch (error) {
       console.error(`getPrompted error for '${promptName}':`, error);
@@ -394,7 +427,9 @@ export class PromptManager {
     processedContent: string,
     usedVariables: Record<string, any>,
     missingVariables: string[],
-    frontmatter: Record<string, any>
+    frontmatter: Record<string, any>,
+    actionRecommendations: ActionRecommendation[] = [],
+    executionResults: ExecutionResult[] = []
   ): GetPromptedResult {
     const fileName = basename(promptPath, extname(promptPath));
     const parsed = this.obsidianUtils.parseObsidianFile(
@@ -427,6 +462,10 @@ export class PromptManager {
         wikilinkResolution: false, // Phase 1: Not implemented yet
         variableInterpolation: true,
       },
+      // Enhanced action detection
+      actionRecommendations,
+      autoExecuted: executionResults.length > 0,
+      executionResults,
     };
   }
 
@@ -455,6 +494,10 @@ export class PromptManager {
         wikilinkResolution: false,
         variableInterpolation: false,
       },
+      // Enhanced action detection
+      actionRecommendations: [],
+      autoExecuted: false,
+      executionResults: [],
       error: {
         code: errorCode,
         message: error.message,
@@ -509,6 +552,338 @@ export class PromptManager {
         description: `Missing variable: ${varName}`,
       };
     });
+  }
+
+  /**
+   * Analyze processed prompt content for actionable patterns
+   */
+  private analyzeForActions(
+    content: string,
+    variables: Record<string, any>,
+    _promptPath: string
+  ): ActionRecommendation[] {
+    const recommendations: ActionRecommendation[] = [];
+    const lines = content.split('\n');
+
+    // Pattern 1: File creation instructions
+    const fileCreationPatterns = [
+      /create.*(?:file|document).*(?:in|at|to)\s+([^\s]+)/i,
+      /write.*to\s+([^\s]+)/i,
+      /save.*as\s+([^\s]+)/i,
+      /filename:\s*([^\s]+)/i,
+      /location:\s*([^\s]+)/i,
+      /create.*(?:a complete|the complete)\s+([\w.-]+)/i,
+      /generate.*(?:the|a)\s+([\w.-]+)\s+(?:file|content)/i,
+      /output.*(?:format|as).*([\w.-]+)/i,
+    ];
+
+    for (const line of lines) {
+      for (const pattern of fileCreationPatterns) {
+        const match = line.match(pattern);
+        if (match) {
+          const suggestedPath = this.extractFilePath(match[1], variables);
+          if (suggestedPath) {
+            recommendations.push({
+              type: 'create_file',
+              description: `Create file at ${suggestedPath}`,
+              parameters: {
+                path: suggestedPath,
+                content: this.extractContentForFile(content, line),
+              },
+              confidence: 0.9,
+              autoExecutable: true,
+              reasoning: `Detected file creation instruction: "${line.trim()}"`,
+            });
+          }
+        }
+      }
+    }
+
+    // Pattern 1.5: Smart README detection
+    if (
+      content.toLowerCase().includes('readme') &&
+      (content.toLowerCase().includes('generate') ||
+        content.toLowerCase().includes('create'))
+    ) {
+      const suggestedPath = this.generateSafeDocumentationPath(variables);
+      recommendations.push({
+        type: 'create_file',
+        description: `Create documentation file at ${suggestedPath}`,
+        parameters: {
+          path: suggestedPath,
+          content: this.generateDocumentationContent(content, variables),
+        },
+        confidence: 0.95,
+        autoExecutable: true,
+        reasoning:
+          'Detected README.md generation request in documentation prompt',
+      });
+    }
+    // Pattern 2: Task operations
+    const taskPatterns = [
+      /update.*task.*([a-zA-Z0-9-_]+)/i,
+      /check.*off.*([a-zA-Z0-9-_]+)/i,
+      /mark.*complete.*([a-zA-Z0-9-_]+)/i,
+    ];
+
+    for (const line of lines) {
+      for (const pattern of taskPatterns) {
+        const match = line.match(pattern);
+        if (match) {
+          recommendations.push({
+            type: 'update_task',
+            description: `Update task ${match[1]}`,
+            parameters: {
+              taskName: match[1],
+              updates: this.extractTaskUpdates(line),
+            },
+            confidence: 0.8,
+            autoExecutable: false, // Require explicit confirmation for task updates
+            reasoning: `Detected task update instruction: "${line.trim()}"`,
+          });
+        }
+      }
+    }
+
+    // Deduplicate recommendations by path and type
+    const dedupedRecommendations = recommendations.filter((rec, index) => {
+      const key = `${rec.type}:${rec.parameters.path}`;
+      return (
+        recommendations.findIndex(
+          r => `${r.type}:${r.parameters.path}` === key
+        ) === index
+      );
+    });
+
+    return dedupedRecommendations;
+  }
+
+  /**
+   * Extract and normalize file path from instruction text
+   */
+  private extractFilePath(
+    rawPath: string,
+    variables: Record<string, any>
+  ): string | null {
+    try {
+      // Clean up the path
+      let path = rawPath.trim().replace(/["'`]/g, '');
+
+      // Handle variable substitution in paths
+      path = path.replace(/\{\{([^}]+)\}\}/g, (match, varName) => {
+        return variables[varName.trim()] || match;
+      });
+
+      // Ensure path is relative to vault
+      if (path.startsWith('/')) {
+        path = path.slice(1);
+      }
+
+      // Add .md extension if no extension provided
+      if (!path.includes('.')) {
+        path += '.md';
+      }
+
+      return path;
+    } catch (error) {
+      console.warn(`Failed to extract file path from: ${rawPath}`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Extract content intended for file creation
+   */
+  private extractContentForFile(
+    fullContent: string,
+    _instructionLine: string
+  ): string {
+    // For now, return the full processed content
+    // In Phase 2, we could implement smarter content extraction
+    return fullContent;
+  }
+
+  /**
+   * Generate a safe path for documentation files to avoid conflicts
+   */
+  private generateSafeDocumentationPath(
+    variables: Record<string, any>
+  ): string {
+    const serverName = variables.server_name || 'mcp-server';
+    const timestamp = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
+    // Generate path options in order of preference
+    const pathOptions = [
+      `docs/${serverName}-README.md`,
+      `${serverName}-documentation.md`,
+      `generated-docs-${timestamp}.md`,
+      `README-${serverName}.md`,
+    ];
+
+    // For now, return the first option - in Phase 2 we could check existence
+    return pathOptions[0];
+  }
+
+  /**
+   * Generate documentation content based on template and variables
+   */
+  private generateDocumentationContent(
+    templateContent: string,
+    variables: Record<string, any>
+  ): string {
+    const serverName = variables.server_name || 'MCP Server';
+    const serverDescription =
+      variables.server_description || 'A Model Context Protocol server';
+    const toolsList = variables.tools_list || [];
+    const installationMethod = variables.installation_method || 'npm install';
+    const useCases = variables.example_use_cases || [];
+
+    return `# ${serverName}
+
+${serverDescription}
+
+## Installation
+
+\`\`\`bash
+${installationMethod}
+\`\`\`
+
+## Tools
+
+This server provides the following tools:
+
+${toolsList.map((tool: string) => `- **${tool}**: [Description needed]`).join('\n')}
+
+## Usage Examples
+
+${useCases.map((useCase: string) => `### ${useCase}\n\n[Example needed]`).join('\n\n')}
+
+## Configuration
+
+Add this server to your MCP client configuration:
+
+\`\`\`json
+{
+  "mcpServers": {
+    "${serverName}": {
+      "command": "node",
+      "args": ["path/to/server/dist/index.js"]
+    }
+  }
+}
+\`\`\`
+
+## Development
+
+1. Clone the repository
+2. Install dependencies: \`npm install\`
+3. Build the project: \`npm run build\`
+4. Test the server: \`npm test\`
+
+## License
+
+MIT License
+`;
+  }
+
+  /**
+   * Extract task updates from instruction text
+   */
+  private extractTaskUpdates(_instructionLine: string): Record<string, any> {
+    // Basic implementation - mark as completed
+    return { completed: true };
+  }
+
+  /**
+   * Execute a single action recommendation
+   */
+  private async executeAction(
+    action: ActionRecommendation
+  ): Promise<ExecutionResult> {
+    switch (action.type) {
+      case 'create_file':
+        return await this.executeFileCreation(action);
+      case 'update_task':
+        return await this.executeTaskUpdate(action);
+      default:
+        return {
+          actionType: action.type,
+          success: false,
+          message: `Action type ${action.type} not yet implemented`,
+        };
+    }
+  }
+
+  /**
+   * Execute file creation action
+   */
+  private async executeFileCreation(
+    action: ActionRecommendation
+  ): Promise<ExecutionResult> {
+    const { path, content } = action.parameters;
+
+    if (!path || !content) {
+      return {
+        actionType: 'create_file',
+        success: false,
+        message: 'Missing required parameters: path or content',
+      };
+    }
+
+    try {
+      // Resolve full path within vault
+      const fullPath = resolveVaultPath(path, this.config.allowedDirectories);
+
+      // Check if file already exists
+      const pathInfo = await getPathInfo(fullPath);
+      if (pathInfo.exists) {
+        return {
+          actionType: 'create_file',
+          success: false,
+          message: `File already exists: ${path}. Use update_file or specify overwrite permission to modify existing files.`,
+          details: {
+            path: fullPath,
+            existingFile: true,
+            suggestion:
+              'Consider using a different filename or explicitly requesting an update',
+          },
+        };
+      }
+
+      // Ensure directory exists
+      await mkdir(dirname(fullPath), { recursive: true });
+
+      // Write file
+      await writeFile(fullPath, content, 'utf-8');
+
+      return {
+        actionType: 'create_file',
+        success: true,
+        message: `Successfully created file: ${path}`,
+        details: { path: fullPath, size: content.length },
+      };
+    } catch (error: any) {
+      return {
+        actionType: 'create_file',
+        success: false,
+        message: `Failed to create file: ${error.message}`,
+        details: error,
+      };
+    }
+  }
+
+  /**
+   * Execute task update action
+   */
+  private async executeTaskUpdate(
+    _action: ActionRecommendation
+  ): Promise<ExecutionResult> {
+    // Placeholder for task update functionality
+    return {
+      actionType: 'update_task',
+      success: false,
+      message: 'Task update functionality not yet implemented',
+    };
   }
 
   /**
