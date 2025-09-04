@@ -26,7 +26,6 @@ import {
 } from '@modelcontextprotocol/server-filesystem/dist/lib.js';
 
 import { VaultConfig } from './types.js';
-// TODO: PromptOptions will be used when implementing get_prompted functionality
 import { ObsidianUtils } from './obsidian.js';
 import { PromptManager } from './prompts.js';
 import { TaskManager } from './tasks.js';
@@ -384,17 +383,99 @@ export class EnhancedFilesystemServer {
     };
   }
 
-  // ENHANCED OBSIDIAN-AWARE TOOL HANDLERS (stubs for now)
-  private async handleGetPrompted(_args: unknown) {
-    // Implementation will go here
-    return {
-      content: [
-        {
-          type: 'text',
-          text: 'get_prompted: Implementation pending',
-        },
-      ],
-    };
+  // ENHANCED OBSIDIAN-AWARE TOOL HANDLERS
+  private async handleGetPrompted(args: unknown) {
+    try {
+      const parsed = z
+        .object({
+          promptName: z.string(),
+          variables: z.record(z.any()).optional().default({}),
+          options: z
+            .object({
+              includeWikilinks: z.boolean().optional().default(false),
+              processTemplater: z.boolean().optional().default(true),
+              searchPaths: z.array(z.string()).optional(),
+              strictVariables: z.boolean().optional().default(false),
+            })
+            .optional()
+            .default({}),
+        })
+        .parse(args);
+
+      // Call the PromptManager's getPrompted function
+      const result = await this.promptManager.getPrompted(
+        parsed.promptName,
+        parsed.variables,
+        parsed.options
+      );
+
+      // Format response based on success/failure
+      if (result.resolved) {
+        const response = [
+          {
+            type: 'text' as const,
+            text: `# Prompt: ${result.chosen!.title}\n\n${result.content}`,
+          },
+        ];
+
+        // Add metadata if available
+        if (result.chosen!.frontmatterExcerpt) {
+          response.push({
+            type: 'text' as const,
+            text: `\n\n---\n**Metadata:**\n\`\`\`json\n${result.chosen!.frontmatterExcerpt}\n\`\`\``,
+          });
+        }
+
+        // Add processing information
+        const processingInfo = [];
+        if (Object.keys(result.variablesUsed).length > 0) {
+          processingInfo.push(
+            `Variables used: ${Object.keys(result.variablesUsed).join(', ')}`
+          );
+        }
+        if (result.missingVariables.length > 0) {
+          processingInfo.push(
+            `Missing variables: ${result.missingVariables.map(v => v.name).join(', ')}`
+          );
+        }
+        processingInfo.push(
+          `Templater processed: ${result.processing.templaterProcessed}`
+        );
+
+        if (processingInfo.length > 0) {
+          response.push({
+            type: 'text' as const,
+            text: `\n\n---\n**Processing Info:**\n${processingInfo.join('\n')}`,
+          });
+        }
+
+        return { content: response };
+      } else {
+        // Error case
+        const errorMessage = result.error
+          ? `Error (${result.error.code}): ${result.error.message}`
+          : `Failed to process prompt '${parsed.promptName}'`;
+
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `❌ ${errorMessage}`,
+            },
+          ],
+        };
+      }
+    } catch (error: any) {
+      console.error('handleGetPrompted error:', error);
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: `❌ Invalid request: ${error.message}`,
+          },
+        ],
+      };
+    }
   }
 
   private async handleCreateTask(_args: unknown) {
