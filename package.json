@@ -47,6 +47,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.0",
+    "@modelcontextprotocol/server-filesystem": "^2025.8.21",
     "gray-matter": "^4.0.3",
     "zod": "^3.23.8",
     "zod-to-json-schema": "^3.23.5"
