@@ -1,15 +1,15 @@
 /**
  * Enhanced Filesystem Server
- * 
+ *
  * Extends the canonical MCP filesystem server with Obsidian-aware
  * task and prompt management capabilities.
  */
 
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
+} from '@modelcontextprotocol/sdk/types.js';
 
 import { VaultConfig } from './types.js';
 import { ObsidianUtils } from './obsidian.js';
@@ -44,113 +44,143 @@ export class EnhancedFilesystemServer {
       return {
         tools: [
           // Original filesystem tools would be inherited here
-          
+
           // Enhanced prompt management tools
           {
-            name: "get_prompted",
-            description: "Intelligently discover, load, and process prompt templates with variable substitution and Obsidian feature support",
+            name: 'get_prompted',
+            description:
+              'Intelligently discover, load, and process prompt templates with variable substitution and Obsidian feature support',
             inputSchema: {
-              type: "object",
+              type: 'object',
               properties: {
                 promptName: {
-                  type: "string",
-                  description: "Name or partial name of the prompt to load"
+                  type: 'string',
+                  description: 'Name or partial name of the prompt to load',
                 },
                 variables: {
-                  type: "object",
-                  description: "Variables to substitute in the prompt template",
-                  additionalProperties: true
+                  type: 'object',
+                  description: 'Variables to substitute in the prompt template',
+                  additionalProperties: true,
                 },
                 options: {
-                  type: "object",
+                  type: 'object',
                   properties: {
-                    includeWikilinks: { type: "boolean", default: false },
-                    processTemplater: { type: "boolean", default: true },
-                    searchPaths: { type: "array", items: { type: "string" } },
-                    strictVariables: { type: "boolean", default: false }
-                  }
-                }
+                    includeWikilinks: { type: 'boolean', default: false },
+                    processTemplater: { type: 'boolean', default: true },
+                    searchPaths: { type: 'array', items: { type: 'string' } },
+                    strictVariables: { type: 'boolean', default: false },
+                  },
+                },
               },
-              required: ["promptName"]
-            }
+              required: ['promptName'],
+            },
           },
-          
+
           // Enhanced task management tools
           {
-            name: "create_task",
-            description: "Create a new task using Task.md template with auto-populated metadata",
+            name: 'create_task',
+            description:
+              'Create a new task using Task.md template with auto-populated metadata',
             inputSchema: {
-              type: "object",
+              type: 'object',
               properties: {
-                name: { type: "string", description: "Task name" },
-                description: { type: "string", description: "Task description" },
-                checklist: { type: "array", items: { type: "string" }, description: "Checklist items" },
-                metadata: { type: "object", description: "Task metadata", additionalProperties: true }
+                name: { type: 'string', description: 'Task name' },
+                description: {
+                  type: 'string',
+                  description: 'Task description',
+                },
+                checklist: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'Checklist items',
+                },
+                metadata: {
+                  type: 'object',
+                  description: 'Task metadata',
+                  additionalProperties: true,
+                },
               },
-              required: ["name", "description", "checklist"]
-            }
+              required: ['name', 'description', 'checklist'],
+            },
           },
-          
+
           {
-            name: "update_task_progress",
-            description: "Update task progress by modifying checklist item completion status",
+            name: 'update_task_progress',
+            description:
+              'Update task progress by modifying checklist item completion status',
             inputSchema: {
-              type: "object",
+              type: 'object',
               properties: {
-                taskName: { type: "string", description: "Name of the task to update" },
-                updates: { 
-                  type: "object", 
-                  description: "Checklist updates as item_number: boolean pairs",
-                  additionalProperties: { type: "boolean" }
-                }
+                taskName: {
+                  type: 'string',
+                  description: 'Name of the task to update',
+                },
+                updates: {
+                  type: 'object',
+                  description:
+                    'Checklist updates as item_number: boolean pairs',
+                  additionalProperties: { type: 'boolean' },
+                },
               },
-              required: ["taskName", "updates"]
-            }
+              required: ['taskName', 'updates'],
+            },
           },
-          
+
           {
-            name: "get_task_status",
-            description: "Get comprehensive task status including completion metrics and next actions",
+            name: 'get_task_status',
+            description:
+              'Get comprehensive task status including completion metrics and next actions',
             inputSchema: {
-              type: "object",
+              type: 'object',
               properties: {
-                taskName: { type: "string", description: "Name of the task to analyze" }
+                taskName: {
+                  type: 'string',
+                  description: 'Name of the task to analyze',
+                },
               },
-              required: ["taskName"]
-            }
+              required: ['taskName'],
+            },
           },
-          
+
           {
-            name: "link_task_to_prompt",
-            description: "Create bidirectional links between tasks and prompts with relationship tracking",
+            name: 'link_task_to_prompt',
+            description:
+              'Create bidirectional links between tasks and prompts with relationship tracking',
             inputSchema: {
-              type: "object",
+              type: 'object',
               properties: {
-                taskName: { type: "string", description: "Name of the task" },
-                promptName: { type: "string", description: "Name of the prompt" },
-                relationship: { type: "string", description: "Nature of the relationship", default: "uses" }
+                taskName: { type: 'string', description: 'Name of the task' },
+                promptName: {
+                  type: 'string',
+                  description: 'Name of the prompt',
+                },
+                relationship: {
+                  type: 'string',
+                  description: 'Nature of the relationship',
+                  default: 'uses',
+                },
               },
-              required: ["taskName", "promptName"]
-            }
-          }
-        ]
+              required: ['taskName', 'promptName'],
+            },
+          },
+        ],
       };
     });
 
     // Register tool call handler
-    server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    server.setRequestHandler(CallToolRequestSchema, async request => {
       const { name, arguments: args } = request.params;
 
       switch (name) {
-        case "get_prompted":
+        case 'get_prompted':
           return await this.handleGetPrompted(args);
-        case "create_task":
+        case 'create_task':
           return await this.handleCreateTask(args);
-        case "update_task_progress":
+        case 'update_task_progress':
           return await this.handleUpdateTaskProgress(args);
-        case "get_task_status":
+        case 'get_task_status':
           return await this.handleGetTaskStatus(args);
-        case "link_task_to_prompt":
+        case 'link_task_to_prompt':
           return await this.handleLinkTaskToPrompt(args);
         default:
           throw new Error(`Unknown tool: ${name}`);
@@ -159,53 +189,63 @@ export class EnhancedFilesystemServer {
   }
 
   // Tool handlers - stubs for now
-  private async handleGetPrompted(args: any) {
+  private async handleGetPrompted(_args: unknown) {
     // Implementation will go here
     return {
-      content: [{
-        type: "text",
-        text: "get_prompted: Implementation pending"
-      }]
+      content: [
+        {
+          type: 'text',
+          text: 'get_prompted: Implementation pending',
+        },
+      ],
     };
   }
 
-  private async handleCreateTask(args: any) {
+  private async handleCreateTask(_args: unknown) {
     // Implementation will go here
     return {
-      content: [{
-        type: "text", 
-        text: "create_task: Implementation pending"
-      }]
+      content: [
+        {
+          type: 'text',
+          text: 'create_task: Implementation pending',
+        },
+      ],
     };
   }
 
-  private async handleUpdateTaskProgress(args: any) {
+  private async handleUpdateTaskProgress(_args: unknown) {
     // Implementation will go here
     return {
-      content: [{
-        type: "text",
-        text: "update_task_progress: Implementation pending"
-      }]
+      content: [
+        {
+          type: 'text',
+          text: 'update_task_progress: Implementation pending',
+        },
+      ],
     };
   }
 
-  private async handleGetTaskStatus(args: any) {
+  private async handleGetTaskStatus(_args: unknown) {
     // Implementation will go here
     return {
-      content: [{
-        type: "text",
-        text: "get_task_status: Implementation pending"
-      }]
+      content: [
+        {
+          type: 'text',
+          text: 'get_task_status: Implementation pending',
+        },
+      ],
     };
   }
 
-  private async handleLinkTaskToPrompt(args: any) {
+  private async handleLinkTaskToPrompt(_args: unknown) {
     // Implementation will go here
     return {
-      content: [{
-        type: "text",
-        text: "link_task_to_prompt: Implementation pending"
-      }]
+      content: [
+        {
+          type: 'text',
+          text: 'link_task_to_prompt: Implementation pending',
+        },
+      ],
     };
   }
 }

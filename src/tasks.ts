@@ -1,11 +1,17 @@
 /**
  * Task Management System
- * 
+ *
  * Handles task creation, progress tracking, and status analysis
  * with Obsidian-aware checklist parsing and template integration.
  */
 
-import { VaultConfig, Task, TaskMetadata, TaskProgress, ChecklistItem } from './types.js';
+import {
+  VaultConfig,
+  Task,
+  TaskMetadata,
+  TaskProgress,
+  ChecklistItem,
+} from './types.js';
 import { ObsidianUtils } from './obsidian.js';
 
 export class TaskManager {
@@ -24,13 +30,13 @@ export class TaskManager {
     metadata: TaskMetadata = {}
   ): Promise<string> {
     console.log(`createTask: ${name} - Implementation pending`);
-    
+
     // Implementation will:
     // 1. Load Task.md template
     // 2. Auto-populate Templater variables
     // 3. Create in tasks/ folder with proper naming
     // 4. Return task file path for immediate editing
-    
+
     return `Task "${name}" would be created with ${checklist.length} checklist items`;
   }
 
@@ -42,21 +48,21 @@ export class TaskManager {
     updates: Record<string, boolean>
   ): Promise<TaskProgress> {
     console.log(`updateTaskProgress: ${taskName} - Implementation pending`);
-    
+
     // Implementation will:
     // 1. Find task by name (fuzzy matching)
     // 2. Parse current checklist state
     // 3. Apply updates: {2: true, 5: false}
     // 4. Calculate and update completion percentage
     // 5. Maintain task history/audit trail
-    
+
     return {
       completionPercentage: 0,
       totalItems: 0,
       completedItems: 0,
       nextActions: [],
       blockers: [],
-      lastUpdated: new Date()
+      lastUpdated: new Date(),
     };
   }
 
@@ -65,20 +71,20 @@ export class TaskManager {
    */
   async getTaskStatus(taskName: string): Promise<TaskProgress> {
     console.log(`getTaskStatus: ${taskName} - Implementation pending`);
-    
+
     // Implementation will:
     // 1. Parse all checkbox states
     // 2. Return completion metrics
     // 3. Identify next actions
     // 4. Show dependencies and blockers
-    
+
     return {
       completionPercentage: 0,
       totalItems: 0,
       completedItems: 0,
       nextActions: [`Next action for ${taskName}`],
       blockers: [],
-      lastUpdated: new Date()
+      lastUpdated: new Date(),
     };
   }
 
@@ -90,8 +96,10 @@ export class TaskManager {
     promptName: string,
     relationship: string = 'uses'
   ): Promise<void> {
-    console.log(`linkTaskToPrompt: ${taskName} -> ${promptName} (${relationship}) - Implementation pending`);
-    
+    console.log(
+      `linkTaskToPrompt: ${taskName} -> ${promptName} (${relationship}) - Implementation pending`
+    );
+
     // Implementation will:
     // 1. Find both task and prompt files
     // 2. Update task metadata to reference associated prompts
@@ -106,7 +114,7 @@ export class TaskManager {
   }
 
   private parseChecklistItems(content: string): ChecklistItem[] {
-    console.log("parseChecklistItems: Implementation pending");
+    console.log('parseChecklistItems: Implementation pending');
     // Parse markdown checkboxes: - [ ] item or - [x] completed
     return [];
   }
@@ -114,7 +122,8 @@ export class TaskManager {
   private calculateProgress(checklist: ChecklistItem[]): TaskProgress {
     const totalItems = checklist.length;
     const completedItems = checklist.filter(item => item.completed).length;
-    const completionPercentage = totalItems > 0 ? (completedItems / totalItems) * 100 : 0;
+    const completionPercentage =
+      totalItems > 0 ? (completedItems / totalItems) * 100 : 0;
 
     return {
       completionPercentage,
@@ -122,12 +131,15 @@ export class TaskManager {
       completedItems,
       nextActions: [],
       blockers: [],
-      lastUpdated: new Date()
+      lastUpdated: new Date(),
     };
   }
 
-  private updateChecklistInContent(content: string, updates: Record<string, boolean>): string {
-    console.log("updateChecklistInContent: Implementation pending");
+  private updateChecklistInContent(
+    content: string,
+    updates: Record<string, boolean>
+  ): string {
+    console.log('updateChecklistInContent: Implementation pending');
     // Update checkbox states in markdown content
     return content;
   }
