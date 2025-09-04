@@ -150,19 +150,36 @@ export class TemplateProcessor {
     const minutes = String(date.getMinutes()).padStart(2, '0');
     const seconds = String(date.getSeconds()).padStart(2, '0');
 
-    return format
-      .replace(/YYYY/g, String(year))
-      .replace(/YY/g, String(year).slice(-2))
-      .replace(/MM/g, month)
-      .replace(/DD/g, day)
-      .replace(/HH/g, hours)
-      .replace(/mm/g, minutes)
-      .replace(/ss/g, seconds)
-      .replace(/M/g, String(date.getMonth() + 1))
-      .replace(/D/g, String(date.getDate()))
-      .replace(/H/g, String(date.getHours()))
-      .replace(/m/g, String(date.getMinutes()))
-      .replace(/s/g, String(date.getSeconds()));
+    return format.replace(/YYYY|YY|MM|M|DD|D|HH|H|mm|m|ss|s/g, token => {
+      switch (token) {
+        case 'YYYY':
+          return String(year);
+        case 'YY':
+          return String(year).slice(-2);
+        case 'MM':
+          return month;
+        case 'M':
+          return String(date.getMonth() + 1);
+        case 'DD':
+          return day;
+        case 'D':
+          return String(date.getDate());
+        case 'HH':
+          return hours;
+        case 'H':
+          return String(date.getHours());
+        case 'mm':
+          return minutes;
+        case 'm':
+          return String(date.getMinutes());
+        case 'ss':
+          return seconds;
+        case 's':
+          return String(date.getSeconds());
+        default:
+          return token;
+      }
+    });
   }
 
   /**

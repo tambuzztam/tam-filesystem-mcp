@@ -70,8 +70,7 @@ export class PromptManager {
       if (options.strictVariables || specVariables.length > 0) {
         const validation = this.validateVariables(
           specVariables,
-          mergedVariables,
-          options.strictVariables
+          mergedVariables
         );
         if (!validation.isValid && options.strictVariables) {
           throw new EnhancedMcpError(
@@ -331,7 +330,7 @@ export class PromptManager {
           .split(':')
           .map((s: string) => s.trim());
 
-        if (Object.prototype.hasOwnProperty.call(variables, varName)) {
+        if (varName in variables) {
           const value = variables[varName];
           usedVariables[varName] = value;
           return String(value);
@@ -362,10 +361,7 @@ export class PromptManager {
     const merged = { ...variables };
 
     for (const spec of specs) {
-      if (
-        spec.default !== undefined &&
-        !Object.prototype.hasOwnProperty.call(merged, spec.name)
-      ) {
+      if (spec.default !== undefined && !(spec.name in merged)) {
         merged[spec.name] = spec.default;
       }
     }
