@@ -710,18 +710,11 @@ export class PromptManager {
     variables: Record<string, any>
   ): string {
     const serverName = variables.server_name || 'mcp-server';
-    const timestamp = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
-    // Generate path options in order of preference
-    const pathOptions = [
-      `docs/${serverName}-README.md`,
-      `${serverName}-documentation.md`,
-      `generated-docs-${timestamp}.md`,
-      `README-${serverName}.md`,
-    ];
-
-    // For now, return the first option - in Phase 2 we could check existence
-    return pathOptions[0];
+    // Generate in vault-appropriate location
+    // For documentation, put at vault root with clear naming
+    // Future options could include: utilities/documentation/, reference/, etc.
+    return `${serverName}-documentation.md`;
   }
 
   /**
@@ -834,33 +827,36 @@ MIT License
       // Resolve full path within vault
       const fullPath = resolveVaultPath(path, this.config.allowedDirectories);
 
-      // Check if file already exists
-      const pathInfo = await getPathInfo(fullPath);
-      if (pathInfo.exists) {
-        return {
-          actionType: 'create_file',
-          success: false,
-          message: `File already exists: ${path}. Use update_file or specify overwrite permission to modify existing files.`,
-          details: {
-            path: fullPath,
-            existingFile: true,
-            suggestion:
-              'Consider using a different filename or explicitly requesting an update',
-          },
-        };
-      }
+      // Find an available filename using auto-increment
+      const availablePath = await this.findAvailableFilePath(fullPath);
+      const finalPath = availablePath.path;
+      const wasIncremented = availablePath.incremented;
 
       // Ensure directory exists
-      await mkdir(dirname(fullPath), { recursive: true });
+      await mkdir(dirname(finalPath), { recursive: true });
 
       // Write file
-      await writeFile(fullPath, content, 'utf-8');
+      await writeFile(finalPath, content, 'utf-8');
+
+      // Create success message with increment info
+      const relativeFinalPath = finalPath.replace(
+        this.config.allowedDirectories[0] + '/',
+        ''
+      );
+      const message = wasIncremented
+        ? `Successfully created file: ${relativeFinalPath} (auto-incremented to avoid conflict)`
+        : `Successfully created file: ${relativeFinalPath}`;
 
       return {
         actionType: 'create_file',
         success: true,
-        message: `Successfully created file: ${path}`,
-        details: { path: fullPath, size: content.length },
+        message,
+        details: {
+          path: finalPath,
+          originalPath: fullPath,
+          wasIncremented,
+          size: content.length,
+        },
       };
     } catch (error: any) {
       return {
@@ -870,6 +866,60 @@ MIT License
         details: error,
       };
     }
+  }
+
+  /**
+   * Find an available file path using intelligent auto-increment
+   */
+  private async findAvailableFilePath(originalPath: string): Promise<{
+    path: string;
+    incremented: boolean;
+  }> {
+    const pathInfo = await getPathInfo(originalPath);
+
+    // If original path is available, use it
+    if (!pathInfo.exists) {
+      return { path: originalPath, incremented: false };
+    }
+
+    // Extract components for auto-increment
+    const dirname = originalPath.substring(0, originalPath.lastIndexOf('/'));
+    const filename = originalPath.substring(originalPath.lastIndexOf('/') + 1);
+    const lastDot = filename.lastIndexOf('.');
+
+    let baseName: string;
+    let extension: string;
+
+    if (lastDot === -1) {
+      baseName = filename;
+      extension = '';
+    } else {
+      baseName = filename.substring(0, lastDot);
+      extension = filename.substring(lastDot);
+    }
+
+    // Try incrementing numbers until we find an available path
+    let counter = 2;
+    const maxAttempts = 100; // Prevent infinite loops
+
+    while (counter <= maxAttempts) {
+      const incrementedName = `${baseName}-${counter}${extension}`;
+      const incrementedPath = `${dirname}/${incrementedName}`;
+
+      const incrementedPathInfo = await getPathInfo(incrementedPath);
+      if (!incrementedPathInfo.exists) {
+        return { path: incrementedPath, incremented: true };
+      }
+
+      counter++;
+    }
+
+    // Fallback with timestamp if we hit max attempts
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const timestampName = `${baseName}-${timestamp}${extension}`;
+    const timestampPath = `${dirname}/${timestampName}`;
+
+    return { path: timestampPath, incremented: true };
   }
 
   /**
