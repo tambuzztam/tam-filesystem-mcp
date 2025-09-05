@@ -179,7 +179,7 @@ export class EnhancedFilesystemServer {
           {
             name: 'get_prompted',
             description:
-              'Intelligently discover, load, and process prompt templates with variable substitution and Obsidian feature support. Perfect for philosophical counseling workflows.',
+              'Quickly and easily direct the LLM to a specific prompt file using natural language. Discovers prompts by name, substitutes variables, and returns the processed content for the LLM to work with.',
             inputSchema: zodToJsonSchema(GetPromptedArgsSchema),
           },
           {
@@ -409,90 +409,17 @@ export class EnhancedFilesystemServer {
         parsed.options
       );
 
-      // Format response based on success/failure
+      // Format response - simple and focused
       if (result.resolved) {
-        const response = [];
-
-        // Show execution results first if any actions were performed
-        if (result.autoExecuted && result.executionResults.length > 0) {
-          const executionSummary = result.executionResults
-            .map(exec =>
-              exec.success ? `✅ ${exec.message}` : `❌ ${exec.message}`
-            )
-            .join('\n');
-
-          response.push({
-            type: 'text' as const,
-            text: `# Actions Executed\n\n${executionSummary}\n\n---\n`,
-          });
-        }
-
-        // Show prompt content (but de-emphasize if actions were executed)
-        const promptTitle = result.autoExecuted
-          ? `## Source Prompt: ${result.chosen!.title}`
-          : `# Prompt: ${result.chosen!.title}`;
-
-        response.push({
-          type: 'text' as const,
-          text: `${promptTitle}\n\n${result.content}`,
-        });
-
-        // Add action recommendations if any weren't executed
-        const pendingActions = result.actionRecommendations.filter(
-          a => !result.executionResults.some(r => r.actionType === a.type)
-        );
-
-        if (pendingActions.length > 0) {
-          const actionsList = pendingActions
-            .map(
-              action =>
-                `- ${action.description} (confidence: ${Math.round(action.confidence * 100)}%)`
-            )
-            .join('\n');
-
-          response.push({
-            type: 'text' as const,
-            text: `\n\n---\n**Suggested Actions:**\n${actionsList}`,
-          });
-        }
-
-        // Add metadata if available
-        if (result.chosen!.frontmatterExcerpt) {
-          response.push({
-            type: 'text' as const,
-            text: `\n\n---\n**Metadata:**\n\`\`\`json\n${result.chosen!.frontmatterExcerpt}\n\`\`\``,
-          });
-        }
-
-        // Add processing information
-        const processingInfo = [];
-        if (Object.keys(result.variablesUsed).length > 0) {
-          processingInfo.push(
-            `Variables used: ${Object.keys(result.variablesUsed).join(', ')}`
-          );
-        }
-        if (result.missingVariables.length > 0) {
-          processingInfo.push(
-            `Missing variables: ${result.missingVariables.map(v => v.name).join(', ')}`
-          );
-        }
-        processingInfo.push(
-          `Templater processed: ${result.processing.templaterProcessed}`
-        );
-        if (result.actionRecommendations.length > 0) {
-          processingInfo.push(
-            `Actions detected: ${result.actionRecommendations.length}`
-          );
-        }
-
-        if (processingInfo.length > 0) {
-          response.push({
-            type: 'text' as const,
-            text: `\n\n---\n**Processing Info:**\n${processingInfo.join('\n')}`,
-          });
-        }
-
-        return { content: response };
+        // Just return the processed prompt content
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: result.content,
+            },
+          ],
+        };
       } else {
         // Error case
         const errorMessage = result.error

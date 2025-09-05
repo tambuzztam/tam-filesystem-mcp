@@ -7,7 +7,6 @@
 
 import {
   VaultConfig,
-  Task,
   TaskMetadata,
   TaskProgress,
   ChecklistItem,
@@ -27,7 +26,7 @@ export class TaskManager {
     name: string,
     description: string,
     checklist: string[],
-    metadata: TaskMetadata = {}
+    _metadata: TaskMetadata = {}
   ): Promise<string> {
     console.log(`createTask: ${name} - Implementation pending`);
 
@@ -45,7 +44,7 @@ export class TaskManager {
    */
   async updateTaskProgress(
     taskName: string,
-    updates: Record<string, boolean>
+    _updates: Record<string, boolean>
   ): Promise<TaskProgress> {
     console.log(`updateTaskProgress: ${taskName} - Implementation pending`);
 
@@ -113,7 +112,7 @@ export class TaskManager {
     return null;
   }
 
-  private parseChecklistItems(content: string): ChecklistItem[] {
+  private parseChecklistItems(_content: string): ChecklistItem[] {
     console.log('parseChecklistItems: Implementation pending');
     // Parse markdown checkboxes: - [ ] item or - [x] completed
     return [];
@@ -137,7 +136,7 @@ export class TaskManager {
 
   private updateChecklistInContent(
     content: string,
-    updates: Record<string, boolean>
+    _updates: Record<string, boolean>
   ): string {
     console.log('updateChecklistInContent: Implementation pending');
     // Update checkbox states in markdown content
