@@ -27,6 +27,9 @@ export function loadVaultConfig(allowedDirectories: string[]): VaultConfig {
     fuzzyThreshold: 0.6,
     strictVariables: false,
     defaultDateFormat: 'YYYY-MM-DD',
+    // Prompt discovery thresholds
+    promptFuzzyMatchThreshold: 0.3,
+    promptSuggestionThreshold: 0.2,
   };
 
   // Try to find vault config file in any of the allowed directories
@@ -83,6 +86,13 @@ export function loadVaultConfig(allowedDirectories: string[]): VaultConfig {
     defaultDateFormat:
       vaultConfigFile.variables?.defaultDateFormat ||
       defaultConfig.defaultDateFormat,
+    // Prompt discovery thresholds
+    promptFuzzyMatchThreshold:
+      vaultConfigFile.search?.promptFuzzyMatchThreshold ??
+      defaultConfig.promptFuzzyMatchThreshold,
+    promptSuggestionThreshold:
+      vaultConfigFile.search?.promptSuggestionThreshold ??
+      defaultConfig.promptSuggestionThreshold,
   };
 
   console.error(`✓ Vault: ${vaultConfigFile.vault?.name || 'unnamed'}`);

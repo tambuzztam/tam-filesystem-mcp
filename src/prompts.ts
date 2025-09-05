@@ -289,7 +289,7 @@ export class PromptManager {
             file.name.toLowerCase()
           ),
         }))
-        .filter(file => file.score > 0.3) // Minimum threshold
+        .filter(file => file.score > this.config.promptFuzzyMatchThreshold!) // Minimum threshold
         .sort((a, b) => b.score - a.score);
 
       if (matches.length > 0) {
@@ -351,8 +351,13 @@ export class PromptManager {
           const contentLower = parsed.content.toLowerCase();
           if (contentLower.includes(searchLower)) {
             // Count occurrences but cap the influence
+            // Escape special regex characters to prevent regex injection
+            const escapedSearch = searchLower.replace(
+              /[.*+?^${}()|[\]\\]/g,
+              '\\$&'
+            );
             const occurrences = (
-              contentLower.match(new RegExp(searchLower, 'g')) || []
+              contentLower.match(new RegExp(escapedSearch, 'g')) || []
             ).length;
             score += Math.min(0.5, occurrences * 0.1);
           }
@@ -370,7 +375,7 @@ export class PromptManager {
       if (matches.length > 0) {
         matches.sort((a, b) => b.score - a.score);
         const bestMatch = matches[0];
-        if (bestMatch.score > 0.2) {
+        if (bestMatch.score > this.config.promptSuggestionThreshold!) {
           return bestMatch.path;
         }
       }
@@ -412,7 +417,7 @@ export class PromptManager {
             name.toLowerCase(),
             file.name.toLowerCase()
           );
-          if (score > 0.2) {
+          if (score > this.config.promptSuggestionThreshold!) {
             // Lower threshold for suggestions
             allSuggestions.push({ name: file.name, score });
           }
@@ -430,7 +435,7 @@ export class PromptManager {
                   name.toLowerCase(),
                   alias.toLowerCase()
                 );
-                if (aliasScore > 0.2) {
+                if (aliasScore > this.config.promptSuggestionThreshold!) {
                   allSuggestions.push({ name: alias, score: aliasScore * 0.9 }); // Slightly lower score for aliases
                 }
               }

@@ -17,6 +17,9 @@ export interface VaultConfig {
   fuzzyThreshold?: number;
   strictVariables?: boolean;
   defaultDateFormat?: string;
+  // Prompt discovery thresholds
+  promptFuzzyMatchThreshold?: number;
+  promptSuggestionThreshold?: number;
 }
 
 // Vault configuration file structure
@@ -39,6 +42,8 @@ export interface VaultConfigFile {
   search: {
     maxResults: number;
     fuzzyThreshold: number;
+    promptFuzzyMatchThreshold?: number;
+    promptSuggestionThreshold?: number;
   };
   variables: {
     strictValidation: boolean;
