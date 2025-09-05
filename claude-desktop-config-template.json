@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    // Add the below enhanced MCP filesystem server to your existing configuration
+    // This server extends the basic filesystem functionality with Obsidian-aware
+    // prompt management and task workflow capabilities
+
+    "tam-filesystem-mcp": {
+      "command": "/Users/benjaminpolansky/.nvm/versions/node/v22.16.0/bin/node",
+      "args": [
+        "/Users/benjaminpolansky/tam-filesystem-mcp/dist/index.js",
+        "/Users/benjaminpolansky/obsidian/death-of-socrates"
+      ]
+    }
+  }
+}

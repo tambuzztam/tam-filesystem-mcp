@@ -16,7 +16,9 @@
   },
   "search": {
     "maxResults": 10,
-    "fuzzyThreshold": 0.6
+    "fuzzyThreshold": 0.6,
+    "promptFuzzyMatchThreshold": 0.3,
+    "promptSuggestionThreshold": 0.2
   },
   "variables": {
     "strictValidation": false,

@@ -35,8 +35,8 @@ export class PromptManager {
   }
 
   /**
-   * The flagship function: Intelligently discover, load, and process prompts
-   * Phase 1 implementation with basic functionality
+   * The flagship function: Quickly and easily direct the LLM to a specific prompt
+   * Focuses on efficient and accurate prompt discovery and variable substitution
    */
   async getPrompted(
     promptName: string,
@@ -44,7 +44,7 @@ export class PromptManager {
     options: PromptOptions = {}
   ): Promise<GetPromptedResult> {
     try {
-      // 1. Intelligent Discovery (Phase 1: exact filename matching only)
+      // 1. Discover the prompt file
       const promptPath = await this.discoverPrompt(
         promptName,
         options.searchPaths
@@ -56,35 +56,33 @@ export class PromptManager {
         );
       }
 
-      // 2. Load and Parse Obsidian Content
+      // 2. Load and parse the prompt
       const { content, frontmatter } = await this.loadPromptFile(promptPath);
       const { specVariables } = this.collectAllVariables(content, frontmatter);
 
-      // 3. Merge variables with defaults from specifications
+      // 3. Check for missing required variables (but don't error - let LLM handle it)
+      const missingRequired = this.findMissingRequiredVariables(
+        specVariables,
+        variables
+      );
+
+      if (missingRequired.length > 0) {
+        // Return a response that asks the LLM to collect missing variables
+        return this.createMissingVariablesResult(
+          promptPath,
+          missingRequired,
+          frontmatter
+        );
+      }
+
+      // 4. Process variables and template syntax
       const mergedVariables = this.mergeVariablesWithDefaults(
         variables,
         specVariables
       );
-
-      // 4. Variable Validation (if strict mode or specs exist)
-      if (options.strictVariables || specVariables.length > 0) {
-        const validation = this.validateVariables(
-          specVariables,
-          mergedVariables
-        );
-        if (!validation.isValid && options.strictVariables) {
-          throw new EnhancedMcpError(
-            'missing_required_variables',
-            `Missing required variables: ${validation.missing.join(', ')}`,
-            { missing: validation.missing, errors: validation.errors }
-          );
-        }
-      }
-
-      // 5. Template Processing
       let processedContent = content;
 
-      // Handle Templater syntax (Phase 1: basic tp.date.now, tp.file.title)
+      // Basic templater processing if enabled
       if (options.processTemplater !== false && this.config.templaterLite) {
         processedContent = this.resolveTemplaterSyntax(
           processedContent,
@@ -93,25 +91,16 @@ export class PromptManager {
         );
       }
 
-      // Handle variable substitution with {{variable}} syntax
+      // Variable substitution
       const substitutionResult = this.substituteVariables(
         processedContent,
         mergedVariables
       );
-      processedContent = substitutionResult.content;
 
-      // Handle wikilink resolution (Phase 1: not implemented, placeholder)
-      if (options.includeWikilinks) {
-        // Phase 2 feature - for now just log
-        console.log(
-          'Wikilink resolution requested but not yet implemented in Phase 1'
-        );
-      }
-
-      // 6. Create successful result
+      // 5. Return the processed prompt - let the LLM decide what to do with it
       return this.createSuccessResult(
         promptPath,
-        processedContent,
+        substitutionResult.content,
         substitutionResult.usedVariables,
         substitutionResult.missingVariables,
         frontmatter
@@ -152,7 +141,29 @@ export class PromptManager {
       if (contentMatch) return contentMatch;
     }
 
-    throw new Error(`Prompt not found: ${name}`);
+    // If no matches found, provide helpful suggestions
+    try {
+      const absolutePaths = paths.map(path =>
+        path.startsWith('/')
+          ? path
+          : resolveVaultPath(path, this.config.allowedDirectories)
+      );
+      const suggestions = await this.getSuggestions(absolutePaths, name);
+      const suggestionText =
+        suggestions.length > 0
+          ? ` Did you mean: ${suggestions.slice(0, 3).join(', ')}?`
+          : '';
+
+      throw new Error(`Prompt not found: ${name}.${suggestionText}`);
+    } catch (suggestionError: any) {
+      // If suggestion generation fails, just return basic error
+      if (suggestionError?.message?.startsWith('Prompt not found:')) {
+        // This is our own error being re-thrown, just pass it through
+        throw suggestionError;
+      }
+      // This is a different error from suggestion generation
+      throw new Error(`Prompt not found: ${name}.`);
+    }
   }
 
   // Discovery methods - implemented
@@ -203,30 +214,316 @@ export class PromptManager {
     basePath: string,
     name: string
   ): Promise<string | null> {
-    // For Phase 1, return null - this will be implemented in Phase 2
-    // This method would scan frontmatter of all files looking for aliases
-    console.log(`findByAlias: ${basePath}/${name} - Phase 2 feature`);
-    return null;
+    try {
+      const searchPath = resolveVaultPath(
+        basePath,
+        this.config.allowedDirectories
+      );
+
+      // Get all files in the directory
+      const entries = await readdir(searchPath, { withFileTypes: true });
+      const files = entries
+        .filter(entry => entry.isFile() && isAllowedFileType(entry.name))
+        .map(entry => join(searchPath, entry.name));
+
+      // Search through each file's aliases
+      for (const filePath of files) {
+        try {
+          const content = await readFile(filePath, 'utf-8');
+          const parsed = this.obsidianUtils.parseObsidianFile(content);
+
+          // Check aliases in frontmatter
+          const aliases = parsed.frontmatter.aliases || [];
+          const aliasArray = Array.isArray(aliases) ? aliases : [aliases];
+
+          // Check for exact alias match (case-insensitive)
+          for (const alias of aliasArray) {
+            if (
+              typeof alias === 'string' &&
+              alias.toLowerCase() === name.toLowerCase()
+            ) {
+              return filePath;
+            }
+          }
+        } catch {
+          // Skip files that can't be parsed
+          continue;
+        }
+      }
+
+      return null;
+    } catch (error: any) {
+      // Only log if it's not a simple "directory doesn't exist" error
+      if (error.code !== 'ENOENT') {
+        console.warn(`Alias search error in ${basePath}:`, error);
+      }
+      return null;
+    }
   }
 
   private async findFuzzyMatch(
     basePath: string,
     name: string
   ): Promise<string | null> {
-    // For Phase 1, return null - this will be implemented in Phase 2
-    // This method would use fuzzy string matching
-    console.log(`findFuzzyMatch: ${basePath}/${name} - Phase 2 feature`);
-    return null;
+    try {
+      const searchPath = resolveVaultPath(
+        basePath,
+        this.config.allowedDirectories
+      );
+
+      // Get all files in the directory
+      const entries = await readdir(searchPath, { withFileTypes: true });
+      const files = entries
+        .filter(entry => entry.isFile() && isAllowedFileType(entry.name))
+        .map(entry => ({
+          name: entry.name,
+          path: join(searchPath, entry.name),
+        }));
+
+      // Calculate fuzzy match scores
+      const matches = files
+        .map(file => ({
+          ...file,
+          score: this.calculateFuzzyScore(
+            name.toLowerCase(),
+            file.name.toLowerCase()
+          ),
+        }))
+        .filter(file => file.score > this.config.promptFuzzyMatchThreshold!) // Minimum threshold
+        .sort((a, b) => b.score - a.score);
+
+      if (matches.length > 0) {
+        // Validate the best match
+        const bestMatch = matches[0];
+        const pathInfo = await getPathInfo(bestMatch.path);
+
+        if (pathInfo.exists && pathInfo.isFile) {
+          return bestMatch.path;
+        }
+      }
+
+      return null;
+    } catch (error: any) {
+      // Only log if it's not a simple "directory doesn't exist" error
+      if (error.code !== 'ENOENT') {
+        console.warn(`Fuzzy match error in ${basePath}:`, error);
+      }
+      return null;
+    }
   }
 
   private async findByContent(
     basePath: string,
     name: string
   ): Promise<string | null> {
-    // For Phase 1, return null - this will be implemented in Phase 2
-    // This method would search file contents
-    console.log(`findByContent: ${basePath}/${name} - Phase 2 feature`);
-    return null;
+    try {
+      const searchPath = resolveVaultPath(
+        basePath,
+        this.config.allowedDirectories
+      );
+
+      // Get all files in the directory
+      const entries = await readdir(searchPath, { withFileTypes: true });
+      const files = entries
+        .filter(entry => entry.isFile() && isAllowedFileType(entry.name))
+        .map(entry => join(searchPath, entry.name));
+
+      const searchLower = name.toLowerCase();
+      const matches: { path: string; score: number }[] = [];
+
+      // Search through each file's content and title
+      for (const filePath of files) {
+        try {
+          const content = await readFile(filePath, 'utf-8');
+          const parsed = this.obsidianUtils.parseObsidianFile(content);
+
+          let score = 0;
+
+          // Check title in frontmatter
+          const title = parsed.frontmatter.title;
+          if (title && typeof title === 'string') {
+            if (title.toLowerCase().includes(searchLower)) {
+              score += 0.8 * (searchLower.length / title.length);
+            }
+          }
+
+          // Check content (but weight it lower than title)
+          const contentLower = parsed.content.toLowerCase();
+          if (contentLower.includes(searchLower)) {
+            // Count occurrences but cap the influence
+            // Escape special regex characters to prevent regex injection
+            const escapedSearch = searchLower.replace(
+              /[.*+?^${}()|[\]\\]/g,
+              '\\$&'
+            );
+            const occurrences = (
+              contentLower.match(new RegExp(escapedSearch, 'g')) || []
+            ).length;
+            score += Math.min(0.5, occurrences * 0.1);
+          }
+
+          if (score > 0) {
+            matches.push({ path: filePath, score });
+          }
+        } catch {
+          // Skip files that can't be parsed
+          continue;
+        }
+      }
+
+      // Return the best match if above threshold
+      if (matches.length > 0) {
+        matches.sort((a, b) => b.score - a.score);
+        const bestMatch = matches[0];
+        if (bestMatch.score > this.config.promptSuggestionThreshold!) {
+          return bestMatch.path;
+        }
+      }
+
+      return null;
+    } catch (error: any) {
+      // Only log if it's not a simple "directory doesn't exist" error
+      if (error.code !== 'ENOENT') {
+        console.warn(`Content search error in ${basePath}:`, error);
+      }
+      return null;
+    }
+  }
+
+  /**
+   * Get suggestions for similar prompt names when exact match fails
+   */
+  async getSuggestions(searchPaths: string[], name: string): Promise<string[]> {
+    const allSuggestions: { name: string; score: number }[] = [];
+
+    for (const basePath of searchPaths) {
+      try {
+        // For absolute paths, use them directly instead of resolveVaultPath
+        const searchPath = basePath.startsWith('/')
+          ? basePath
+          : resolveVaultPath(basePath, this.config.allowedDirectories);
+
+        const entries = await readdir(searchPath, { withFileTypes: true });
+        const files = entries
+          .filter(entry => entry.isFile() && isAllowedFileType(entry.name))
+          .map(entry => ({
+            name: entry.name.replace(/\.(md|txt)$/, ''),
+            path: join(searchPath, entry.name),
+          }));
+
+        // Calculate scores for all files
+        for (const file of files) {
+          const score = this.calculateFuzzyScore(
+            name.toLowerCase(),
+            file.name.toLowerCase()
+          );
+          if (score > this.config.promptSuggestionThreshold!) {
+            // Lower threshold for suggestions
+            allSuggestions.push({ name: file.name, score });
+          }
+
+          // Also check aliases for suggestions
+          try {
+            const content = await readFile(file.path, 'utf-8');
+            const parsed = this.obsidianUtils.parseObsidianFile(content);
+            const aliases = parsed.frontmatter.aliases || [];
+            const aliasArray = Array.isArray(aliases) ? aliases : [aliases];
+
+            for (const alias of aliasArray) {
+              if (typeof alias === 'string') {
+                const aliasScore = this.calculateFuzzyScore(
+                  name.toLowerCase(),
+                  alias.toLowerCase()
+                );
+                if (aliasScore > this.config.promptSuggestionThreshold!) {
+                  allSuggestions.push({ name: alias, score: aliasScore * 0.9 }); // Slightly lower score for aliases
+                }
+              }
+            }
+          } catch {
+            // Skip files that can't be parsed
+          }
+        }
+      } catch {
+        // Skip paths that can't be accessed
+        continue;
+      }
+    }
+
+    // Sort by score and return top suggestions
+    return allSuggestions
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5)
+      .map(s => s.name);
+  }
+
+  /**
+   * Calculate fuzzy match score between search term and filename
+   */
+  private calculateFuzzyScore(search: string, filename: string): number {
+    // Remove file extensions for scoring
+    const cleanFilename = filename.replace(/\.(md|txt)$/, '');
+
+    // Exact match gets highest score
+    if (cleanFilename === search) return 1.0;
+
+    // Check for substring matches
+    if (cleanFilename.includes(search)) {
+      return 0.8 * (search.length / cleanFilename.length);
+    }
+
+    // Check for word boundary matches
+    const searchWords = search.split(/[\s-_]+/);
+    const filenameWords = cleanFilename.split(/[\s-_]+/);
+
+    let matchedWords = 0;
+    for (const searchWord of searchWords) {
+      for (const filenameWord of filenameWords) {
+        if (
+          filenameWord.includes(searchWord) ||
+          searchWord.includes(filenameWord)
+        ) {
+          matchedWords++;
+          break;
+        }
+      }
+    }
+
+    if (matchedWords > 0) {
+      return 0.6 * (matchedWords / searchWords.length);
+    }
+
+    // Check for character overlap (basic Levenshtein-like)
+    const commonChars = this.countCommonCharacters(search, cleanFilename);
+    const maxLen = Math.max(search.length, cleanFilename.length);
+    const charScore = commonChars / maxLen;
+
+    return charScore > 0.4 ? charScore * 0.5 : 0;
+  }
+
+  /**
+   * Count common characters between two strings
+   */
+  private countCommonCharacters(str1: string, str2: string): number {
+    const chars1 = str1.split('').sort();
+    const chars2 = str2.split('').sort();
+    let common = 0;
+    let i = 0,
+      j = 0;
+
+    while (i < chars1.length && j < chars2.length) {
+      if (chars1[i] === chars2[j]) {
+        common++;
+        i++;
+        j++;
+      } else if (chars1[i] < chars2[j]) {
+        i++;
+      } else {
+        j++;
+      }
+    }
+
+    return common;
   }
 
   /**
@@ -387,7 +684,72 @@ export class PromptManager {
   }
 
   /**
-   * Create a successful GetPromptedResult
+   * Find missing required variables from specs
+   */
+  private findMissingRequiredVariables(
+    specVariables: any[],
+    providedVariables: Record<string, any>
+  ): VariableSpec[] {
+    return specVariables.filter(
+      spec => spec.required && !(spec.name in providedVariables)
+    );
+  }
+
+  /**
+   * Create result for missing variables (lets LLM ask for them)
+   */
+  private createMissingVariablesResult(
+    promptPath: string,
+    missingVariables: VariableSpec[],
+    frontmatter: Record<string, any>
+  ): GetPromptedResult {
+    const fileName = basename(promptPath, extname(promptPath));
+    const variableList = missingVariables
+      .map(
+        v =>
+          `- **${v.name}** (${v.type})${v.description ? `: ${v.description}` : ''}`
+      )
+      .join('\n');
+
+    const content = `# Missing Required Variables for "${frontmatter.title || fileName}"
+
+This prompt requires the following variables to be provided:
+
+${variableList}
+
+Please provide values for these variables and call get_prompted again with the variables parameter.`;
+
+    return {
+      resolved: true,
+      autoApplyRecommended: false,
+      confidence: 1.0,
+      chosen: {
+        id: fileName,
+        name: fileName,
+        path: promptPath,
+        title: frontmatter.title || fileName,
+        aliases: [],
+        tags: [],
+        frontmatterExcerpt: this.createFrontmatterExcerpt(frontmatter),
+      },
+      content,
+      variablesUsed: {},
+      missingVariables,
+      candidates: [],
+      unresolvedLinks: [],
+      processing: {
+        templaterProcessed: false,
+        wikilinkResolution: false,
+        variableInterpolation: false,
+      },
+      actionRecommendations: [],
+      autoExecuted: false,
+      executionResults: [],
+    };
+  }
+
+  /**
+   * Create a successful GetPromptedResult (simplified)
    */
   private createSuccessResult(
     promptPath: string,
@@ -403,8 +765,8 @@ export class PromptManager {
 
     return {
       resolved: true,
-      autoApplyRecommended: true,
-      confidence: 1.0, // Exact match has full confidence
+      autoApplyRecommended: false, // Let LLM decide what to do
+      confidence: 1.0,
       chosen: {
         id: fileName,
         name: fileName,
@@ -420,13 +782,16 @@ export class PromptManager {
         missingVariables,
         frontmatter
       ),
-      candidates: [], // Only one candidate in Phase 1
-      unresolvedLinks: [], // Phase 1: No wikilink resolution
+      candidates: [],
+      unresolvedLinks: [],
       processing: {
         templaterProcessed: this.config.templaterLite || false,
-        wikilinkResolution: false, // Phase 1: Not implemented yet
+        wikilinkResolution: false,
         variableInterpolation: true,
       },
+      actionRecommendations: [], // No automatic action detection
+      autoExecuted: false, // No auto-execution
+      executionResults: [], // No executions performed
     };
   }
 
@@ -455,6 +820,10 @@ export class PromptManager {
         wikilinkResolution: false,
         variableInterpolation: false,
       },
+      // Enhanced action detection
+      actionRecommendations: [],
+      autoExecuted: false,
+      executionResults: [],
       error: {
         code: errorCode,
         message: error.message,

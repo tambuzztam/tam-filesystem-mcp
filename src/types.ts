@@ -17,6 +17,9 @@ export interface VaultConfig {
   fuzzyThreshold?: number;
   strictVariables?: boolean;
   defaultDateFormat?: string;
+  // Prompt discovery thresholds
+  promptFuzzyMatchThreshold?: number;
+  promptSuggestionThreshold?: number;
 }
 
 // Vault configuration file structure
@@ -39,6 +42,8 @@ export interface VaultConfigFile {
   search: {
     maxResults: number;
     fuzzyThreshold: number;
+    promptFuzzyMatchThreshold?: number;
+    promptSuggestionThreshold?: number;
   };
   variables: {
     strictValidation: boolean;
@@ -111,6 +116,33 @@ export interface VariableSpec {
   options?: any[];
 }
 
+export interface ActionRecommendation {
+  type:
+    | 'create_file'
+    | 'update_file'
+    | 'create_task'
+    | 'update_task'
+    | 'link_resources';
+  description: string;
+  parameters: {
+    path?: string;
+    content?: string;
+    taskName?: string;
+    updates?: Record<string, any>;
+    [key: string]: any;
+  };
+  confidence: number;
+  autoExecutable: boolean;
+  reasoning: string;
+}
+
+export interface ExecutionResult {
+  actionType: string;
+  success: boolean;
+  message: string;
+  details?: any;
+}
+
 export interface GetPromptedResult {
   resolved: boolean;
   autoApplyRecommended: boolean;
@@ -134,6 +166,10 @@ export interface GetPromptedResult {
     wikilinkResolution: boolean;
     variableInterpolation: boolean;
   };
+  // Enhanced action detection
+  actionRecommendations: ActionRecommendation[];
+  autoExecuted: boolean;
+  executionResults: ExecutionResult[];
   error?: {
     code: string;
     message: string;
