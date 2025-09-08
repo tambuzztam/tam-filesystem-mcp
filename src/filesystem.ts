@@ -82,6 +82,20 @@ export class EnhancedFilesystemServer {
       metadata: z.record(z.any()).optional().describe('Task metadata'),
     });
 
+    const CreatePromptArgsSchema = z.object({
+      purpose: z
+        .string()
+        .describe(
+          'What the new prompt should help accomplish (e.g., "analyze session transcripts", "create weekly reports")'
+        ),
+      targetFilename: z
+        .string()
+        .optional()
+        .describe(
+          'Optional filename for the new prompt (will be auto-generated if not provided)'
+        ),
+    });
+
     // Register tool listing handler that includes ALL tools
     server.setRequestHandler(ListToolsRequestSchema, async () => {
       return {
@@ -183,6 +197,12 @@ export class EnhancedFilesystemServer {
             inputSchema: zodToJsonSchema(GetPromptedArgsSchema),
           },
           {
+            name: 'create_prompt',
+            description:
+              'Create a new prompt file optimized for the getPrompted functionality. Use when the user says "create a prompt to...", "construct a prompt for...", "make a prompt that...", or similar requests to build new reusable prompts.',
+            inputSchema: zodToJsonSchema(CreatePromptArgsSchema),
+          },
+          {
             name: 'create_task',
             description:
               'Create a new task using Task.md template with auto-populated metadata. Integrates with Obsidian templating system.',
@@ -270,6 +290,8 @@ export class EnhancedFilesystemServer {
         // ENHANCED OBSIDIAN-AWARE TOOLS
         case 'get_prompted':
           return await this.handleGetPrompted(args);
+        case 'create_prompt':
+          return await this.handleCreatePrompt(args);
         case 'create_task':
           return await this.handleCreateTask(args);
         case 'update_task_progress':
@@ -446,6 +468,98 @@ export class EnhancedFilesystemServer {
         ],
       };
     }
+  }
+
+  private async handleCreatePrompt(args: unknown) {
+    try {
+      const parsed = z
+        .object({
+          purpose: z.string(),
+          targetFilename: z.string().optional(),
+        })
+        .parse(args);
+
+      // Use the built-in prompt constructor functionality
+      const constructorContent = this.getBuiltInPromptConstructor(
+        parsed.purpose
+      );
+
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: constructorContent,
+          },
+        ],
+      };
+    } catch (error: unknown) {
+      console.error('handleCreatePrompt error:', error);
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: `❌ Invalid request: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+
+  /**
+   * Get the built-in prompt constructor content
+   */
+  private getBuiltInPromptConstructor(purpose: string): string {
+    return `# Prompt Constructor
+
+You are tasked with helping the user create a new prompt file that works perfectly with the \`getPrompted\` functionality.
+
+## Your Mission
+
+Conduct a brief discovery conversation with the user to understand their needs, then create a well-structured prompt file that:
+
+1. **Directs the LLM clearly** using natural language, and role assignment
+2. **Uses variables effectively** for reusability and abstraction  
+3. **Contains actionable instructions** for filesystem operations
+4. **Stands alone** when possible, or gracefully requests missing variables
+
+## Discovery Process
+
+Ask the user targeted questions to understand:
+
+- **Purpose**: What specific task or workflow should this prompt help with?
+- **Context**: Who will use it and when?
+- **Variables**: What information will vary each time? What should be required vs optional?
+- **Actions**: What filesystem operations should typically result from using this prompt?
+- **Structure**: What format or style do they prefer for the output?
+
+The user has indicated their purpose is: **${purpose}**
+
+Use this as a starting point but still ask clarifying questions.
+
+## Your Task
+
+After gathering sufficient information through your discovery conversation:
+
+1. **Generate an appropriate filename** (kebab-case, descriptive)
+2. **Create the prompt file** using \`write_file\` in the vault's configured prompts directory (\`${this.config.promptsPath}\`)
+3. **Structure it properly** with:
+   - YAML frontmatter containing title, description, and prompt-vars
+   - Clear content that works with variable substitution ({{variable}} syntax)
+   - Specific instructions for the LLM on what filesystem actions to take
+   - Template syntax (tp.date.now(), etc.) where appropriate
+
+## Quality Standards
+
+The prompt you create should be optimized so that when someone calls:
+\`\`\`
+get_prompted("your-prompt-name", {variables})
+\`\`\`
+
+The LLM immediately understands what to do and can execute the intended workflow using the available filesystem tools.
+
+---
+
+**Begin the discovery conversation now. Ask your first question to understand what kind of prompt the user needs.**`;
   }
 
   private async handleCreateTask(_args: unknown) {

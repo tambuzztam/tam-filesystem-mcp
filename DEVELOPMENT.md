@@ -38,6 +38,7 @@ npm run test:watch    # Run tests in watch mode
 ### Pre-commit Hooks
 
 Husky is configured to run `lint-staged` on pre-commit, which will:
+
 - Run ESLint with auto-fix on staged TypeScript/JavaScript files
 - Format staged files with Prettier
 - Ensure code quality before commits
@@ -53,6 +54,7 @@ Husky is configured to run `lint-staged` on pre-commit, which will:
 ### Editor Integration
 
 For VS Code users, the project includes settings in `.vscode/settings.json` that enable:
+
 - Format on save
 - Auto-fix ESLint issues on save
 - Organize imports on save

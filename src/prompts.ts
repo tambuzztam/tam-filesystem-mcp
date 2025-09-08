@@ -899,4 +899,185 @@ Please provide values for these variables and call get_prompted again with the v
 
     return `Failed to process prompt '${promptName}': ${error.message}`;
   }
+
+  // PROMPT CREATION UTILITIES
+  /**
+   * Create a new prompt file with proper formatting and structure
+   */
+  async createPromptFile(
+    filename: string,
+    content: PromptFileContent,
+    targetDirectory?: string
+  ): Promise<string> {
+    const directory = targetDirectory || this.config.promptsPath;
+    const targetPath = resolveVaultPath(
+      directory,
+      this.config.allowedDirectories
+    );
+
+    // Generate filename if needed
+    const sanitizedFilename = this.sanitizeFilename(filename);
+    const fullFilename = sanitizedFilename.endsWith('.md')
+      ? sanitizedFilename
+      : `${sanitizedFilename}.md`;
+
+    // Validate the path
+    const validatedPath = validateVaultPath(
+      fullFilename,
+      targetPath,
+      this.config.allowedDirectories
+    );
+
+    // Format the complete prompt file content
+    const formattedContent = this.formatPromptFileContent(content);
+
+    // Write the file
+    const { writeFile } = await import('fs/promises');
+    await writeFile(validatedPath, formattedContent, 'utf-8');
+
+    return validatedPath;
+  }
+
+  /**
+   * Generate a filename from a purpose string
+   */
+  generateFilenameFromPurpose(purpose: string): string {
+    return purpose
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '') // Remove special chars except spaces and hyphens
+      .replace(/\s+/g, '-') // Replace spaces with hyphens
+      .replace(/-+/g, '-') // Collapse multiple hyphens
+      .replace(/^-|-$/g, '') // Remove leading/trailing hyphens
+      .substring(0, 50); // Limit length
+  }
+
+  /**
+   * Sanitize a filename for safe filesystem usage
+   */
+  private sanitizeFilename(filename: string): string {
+    return filename
+      .replace(/[^a-zA-Z0-9\s\-_.]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+  }
+
+  /**
+   * Format complete prompt file content with frontmatter and body
+   */
+  private formatPromptFileContent(content: PromptFileContent): string {
+    const frontmatter = {
+      title: content.title,
+      description: content.description,
+      'prompt-vars': content.variables || [],
+      ...(content.tags && content.tags.length > 0 && { tags: content.tags }),
+      ...(content.aliases &&
+        content.aliases.length > 0 && { aliases: content.aliases }),
+    };
+
+    const yamlFrontmatter = Object.entries(frontmatter)
+      .map(([key, value]) => {
+        if (Array.isArray(value) && value.length === 0) return '';
+        return `${key}: ${this.formatYamlValue(value)}`;
+      })
+      .filter(line => line.trim() !== '')
+      .join('\n');
+
+    return `---
+${yamlFrontmatter}
+---
+
+${content.body}`;
+  }
+
+  /**
+   * Format a value for YAML frontmatter
+   */
+  private formatYamlValue(value: any): string {
+    if (typeof value === 'string') {
+      // Escape strings that might need quoting
+      return value.includes(':') || value.includes('\n') || value.includes('"')
+        ? `"${value.replace(/"/g, '\\"')}"`
+        : value;
+    }
+    if (Array.isArray(value)) {
+      if (value.length === 0) return '[]';
+      // Check if items are objects (like variable specs)
+      if (value.length > 0 && typeof value[0] === 'object') {
+        return `\n${value.map(item => `  - ${this.formatYamlObject(item)}`).join('\n')}`;
+      }
+      // Simple array of strings
+      return `\n${value.map(item => `  - ${item}`).join('\n')}`;
+    }
+    if (typeof value === 'object' && value !== null) {
+      return this.formatYamlObject(value);
+    }
+    return String(value);
+  }
+
+  /**
+   * Format an object for YAML
+   */
+  private formatYamlObject(obj: Record<string, any>): string {
+    const entries = Object.entries(obj)
+      .filter(([_, value]) => value !== undefined)
+      .map(([key, value]) => `${key}: ${this.formatYamlValue(value)}`);
+    return `\n    ${entries.join('\n    ')}`;
+  }
+
+  /**
+   * Create a basic prompt template structure
+   */
+  createPromptTemplate(
+    purpose: string,
+    variables: VariableSpec[] = [],
+    includeCommonTemplates: boolean = true
+  ): PromptFileContent {
+    const filename = this.generateFilenameFromPurpose(purpose);
+    const title = purpose.charAt(0).toUpperCase() + purpose.slice(1);
+
+    let body = `# ${title}\n\n`;
+
+    if (includeCommonTemplates) {
+      body += `Generated on tp.date.now() for processing ${variables.length > 0 ? 'with variables' : 'without variables'}.\n\n`;
+    }
+
+    body += `You are tasked with ${purpose.toLowerCase()}.\n\n`;
+
+    if (variables.length > 0) {
+      body += `## Context Variables\n\n`;
+      variables.forEach(variable => {
+        body += `- **{{${variable.name}}}**: ${variable.description || `${variable.type} variable`}\n`;
+      });
+      body += '\n';
+    }
+
+    body += `## Your Task\n\n[Provide specific instructions for what the LLM should do]\n\n`;
+    body += `## Expected Output\n\n[Describe the expected format and content of the response]\n\n`;
+
+    if (includeCommonTemplates) {
+      body += `## Filesystem Actions\n\nAfter completing the main task, you should typically:\n- Create or update relevant files\n- Organize information appropriately\n- Use the available filesystem tools as needed`;
+    }
+
+    return {
+      filename,
+      title,
+      description: `Helps with ${purpose.toLowerCase()}`,
+      variables,
+      body,
+      tags: ['generated', 'prompt'],
+      aliases: [],
+    };
+  }
+}
+
+// Types for prompt creation
+export interface PromptFileContent {
+  filename: string;
+  title: string;
+  description: string;
+  variables?: VariableSpec[];
+  body: string;
+  tags?: string[];
+  aliases?: string[];
 }

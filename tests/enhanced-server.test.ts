@@ -58,6 +58,7 @@ describe('EnhancedFilesystemServer', () => {
 
     // Should have enhanced tool handlers
     expect(methods).toContain('handleGetPrompted');
+    expect(methods).toContain('handleCreatePrompt');
     expect(methods).toContain('handleCreateTask');
     expect(methods).toContain('handleUpdateTaskProgress');
 

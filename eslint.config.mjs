@@ -15,7 +15,7 @@ export default [
       parserOptions: {
         ecmaVersion: 'latest',
         sourceType: 'module',
-        project: './tsconfig.json',
+        project: './tsconfig.eslint.json',
       },
       globals: {
         console: 'readonly',
@@ -115,7 +115,8 @@ export default [
       'dist/**/*',
       'coverage/**/*',
       'node_modules/**/*',
-      '*.d.ts',
+      '**/*.d.ts',
+      'tests/**/*.js', // Ignore compiled test files
       'jest.config.mjs',
     ],
   },
