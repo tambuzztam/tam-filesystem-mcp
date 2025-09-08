@@ -364,7 +364,8 @@ export class DirectoryAnalysisService {
   }
 
   /**
-   * Analyze subdirectories to understand their roles
+   * Analyze subdirectories to understand their roles and structure
+   * Now provides deeper, more comprehensive structural analysis
    */
   private async analyzeSubdirectories(
     directoryPath: string,
@@ -380,20 +381,11 @@ export class DirectoryAnalysisService {
 
     for (const subdir of subdirs) {
       try {
-        const subdirContents = await this.getDirectoryContents(subdir.path);
-        const patterns = this.detectFileCategories(subdirContents).map(
-          cat => cat.pattern
+        const subdirRole = await this.analyzeSubdirectoryStructure(
+          subdir,
+          analysisDepth
         );
-
-        roles.push({
-          name: subdir.name,
-          inferredPurpose: this.inferDirectoryPurpose(
-            subdir.name,
-            subdirContents
-          ),
-          fileCount: subdirContents.filter(f => f.type === 'file').length,
-          keyPatterns: patterns.slice(0, 3), // Top 3 patterns
-        });
+        roles.push(subdirRole);
       } catch {
         // If we can't read the subdirectory, still include basic info
         roles.push({
@@ -405,7 +397,79 @@ export class DirectoryAnalysisService {
       }
     }
 
-    return roles.slice(0, 10); // Limit to avoid overwhelming output
+    return roles;
+  }
+
+  /**
+   * Analyze a single subdirectory structure recursively
+   */
+  private async analyzeSubdirectoryStructure(
+    subdir: FileInfo,
+    remainingDepth: number
+  ): Promise<SubdirRole> {
+    const subdirContents = await this.getDirectoryContents(subdir.path);
+    const fileCount = subdirContents.filter(f => f.type === 'file').length;
+    const subdirCount = subdirContents.filter(
+      f => f.type === 'directory'
+    ).length;
+
+    // Get patterns from current level
+    const patterns = this.detectFileCategories(subdirContents)
+      .map(cat => cat.pattern)
+      .slice(0, 3);
+
+    // Analyze nested structure if we have remaining depth
+    let nestedStructure = '';
+    if (remainingDepth > 1 && subdirCount > 0) {
+      const nestedDirs = subdirContents
+        .filter(f => f.type === 'directory')
+        .slice(0, 5); // Limit to prevent excessive nesting
+
+      for (const nestedDir of nestedDirs) {
+        try {
+          const nestedContents = await this.getDirectoryContents(
+            nestedDir.path
+          );
+          const nestedFileCount = nestedContents.filter(
+            f => f.type === 'file'
+          ).length;
+          const nestedSubdirCount = nestedContents.filter(
+            f => f.type === 'directory'
+          ).length;
+
+          if (nestedFileCount > 0 || nestedSubdirCount > 0) {
+            const structure =
+              nestedSubdirCount > nestedFileCount
+                ? `${nestedSubdirCount} subdirs`
+                : `${nestedFileCount} files`;
+            nestedStructure += nestedStructure
+              ? `, ${nestedDir.name}/ (${structure})`
+              : `${nestedDir.name}/ (${structure})`;
+          }
+        } catch {
+          // Skip directories we can't read
+        }
+      }
+    }
+
+    // Create enriched purpose description
+    let purpose = this.inferDirectoryPurpose(subdir.name, subdirContents);
+
+    // Add structural context if we found nested structure
+    if (nestedStructure) {
+      purpose += ` → Contains: ${nestedStructure}`;
+    } else if (subdirCount > 0 && fileCount === 0) {
+      purpose += ` → Organizes ${subdirCount} subdirectories`;
+    } else if (fileCount > 20) {
+      purpose += ` → Large collection of ${fileCount} files`;
+    }
+
+    return {
+      name: subdir.name,
+      inferredPurpose: purpose,
+      fileCount,
+      keyPatterns: patterns,
+    };
   }
 
   /**

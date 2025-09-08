@@ -362,10 +362,10 @@ export class EnhancedFilesystemServer {
                 analysisDepth: {
                   type: 'number',
                   description:
-                    'How deep to look into subdirectories for context (1-2 levels)',
-                  default: 1,
+                    'How deep to look into subdirectories for structural context (2-3 levels recommended)',
+                  default: 2,
                   minimum: 1,
-                  maximum: 3,
+                  maximum: 4,
                 },
                 maxContentLength: {
                   type: 'number',
@@ -887,7 +887,7 @@ The LLM immediately understands what to do and can execute the intended workflow
           targetDirectory: z.string(),
           userContext: z.string(),
           readmeFilename: z.string().optional().default('README.md'),
-          analysisDepth: z.number().min(1).max(3).optional().default(1),
+          analysisDepth: z.number().min(1).max(4).optional().default(2),
           maxContentLength: z.number().optional().default(2000),
           verbosity: z
             .enum(['concise', 'verbose'])

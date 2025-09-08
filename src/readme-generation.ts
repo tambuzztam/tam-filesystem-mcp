@@ -45,7 +45,7 @@ export class ReadmeGenerationService {
   ): Promise<ReadmeGenerationResult> {
     const {
       readmeFilename = 'README.md',
-      analysisDepth = 1,
+      analysisDepth = 2, // Increased default depth for better structural analysis
       maxContentLength = 2000,
       verbosity = 'concise',
     } = options;
@@ -129,37 +129,70 @@ export class ReadmeGenerationService {
     sections.push(`# ${dirName}\n\n${intelligence.purpose}\n`);
 
     if (verbosity === 'concise') {
-      // Concise mode: only show key files if they exist
-      if (intelligence.keyFiles.length > 0) {
-        sections.push('**Key Files:**');
+      // Concise mode: Focus primarily on directory structure
+      if (intelligence.subdirectoryRoles.length > 0) {
+        sections.push('## Directory Structure');
         sections.push(
-          intelligence.keyFiles.map(file => `- **${file}**`).join('\n')
+          intelligence.subdirectoryRoles
+            .map(subdir => `- **${subdir.name}/**: ${subdir.inferredPurpose}`)
+            .join('\n')
         );
         sections.push('');
       }
 
-      // Show subdirectories in a compact format
-      if (intelligence.subdirectoryRoles.length > 0) {
-        const subdirList = intelligence.subdirectoryRoles
-          .map(subdir => `**${subdir.name}/**`)
-          .join(', ');
-        sections.push(`**Subdirectories:** ${subdirList}`);
+      // Only show key files if they're particularly important (fewer than before)
+      const criticalFiles = intelligence.keyFiles.slice(0, 3); // Limit to top 3
+      if (criticalFiles.length > 0) {
+        sections.push(
+          '**Key Files:** ' +
+            criticalFiles.map(file => `**${file}**`).join(', ')
+        );
         sections.push('');
       }
     } else {
-      // Verbose mode: include all sections as before
-      // Organization section
-      if (intelligence.fileCategories.length > 0) {
-        sections.push('## Organization');
-        sections.push(this.formatFileCategories(intelligence.fileCategories));
+      // Verbose mode: Comprehensive structural analysis with contextual details
+
+      // Subdirectories section (moved to top for emphasis on structure)
+      if (intelligence.subdirectoryRoles.length > 0) {
+        sections.push('## Directory Structure');
+        sections.push(
+          intelligence.subdirectoryRoles
+            .map(
+              subdir =>
+                `- **${subdir.name}/**: ${subdir.inferredPurpose} (${
+                  subdir.fileCount
+                } items)`
+            )
+            .join('\n')
+        );
         sections.push('');
       }
 
-      // Key Files section
-      if (intelligence.keyFiles.length > 0) {
+      // Organization section (de-emphasized, focused on patterns rather than individual files)
+      const significantCategories = intelligence.fileCategories.filter(
+        cat => cat.count > 3
+      );
+      if (significantCategories.length > 0) {
+        sections.push('## Content Organization');
+        sections.push(this.formatFileCategories(significantCategories));
+        sections.push('');
+      }
+
+      // Usage Patterns section (moved up for better workflow understanding)
+      if (intelligence.workflowHints.length > 0) {
+        sections.push('## Usage Patterns');
+        sections.push(
+          intelligence.workflowHints.map(hint => `- ${hint}`).join('\n')
+        );
+        sections.push('');
+      }
+
+      // Key Files section (reduced prominence, only most critical files)
+      const criticalFiles = intelligence.keyFiles.slice(0, 5);
+      if (criticalFiles.length > 0) {
         sections.push('## Key Files');
         sections.push(
-          intelligence.keyFiles
+          criticalFiles
             .map(file => {
               const importance = this.inferFileImportance(file, intelligence);
               return `- **${file}**: ${importance}`;
@@ -174,31 +207,6 @@ export class ReadmeGenerationService {
         sections.push('## Conventions');
         sections.push(
           intelligence.namingPatterns.map(pattern => `- ${pattern}`).join('\n')
-        );
-        sections.push('');
-      }
-
-      // Subdirectories section
-      if (intelligence.subdirectoryRoles.length > 0) {
-        sections.push('## Subdirectories');
-        sections.push(
-          intelligence.subdirectoryRoles
-            .map(
-              subdir =>
-                `- **${subdir.name}/**: ${subdir.inferredPurpose} (${
-                  subdir.fileCount
-                } items)`
-            )
-            .join('\n')
-        );
-        sections.push('');
-      }
-
-      // Usage Patterns section
-      if (intelligence.workflowHints.length > 0) {
-        sections.push('## Usage Patterns');
-        sections.push(
-          intelligence.workflowHints.map(hint => `- ${hint}`).join('\n')
         );
         sections.push('');
       }
