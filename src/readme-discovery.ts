@@ -121,7 +121,7 @@ export class ReadmeDiscoveryService {
 
       return content;
     } catch (error) {
-      if (error.code === 'ENOENT') {
+      if ((error as any).code === 'ENOENT') {
         // Remove from cache if file no longer exists
         this.readmeCache.delete(filePath);
       }

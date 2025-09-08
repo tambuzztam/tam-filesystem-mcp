@@ -589,7 +589,7 @@ export class EnhancedFilesystemServer {
         content: [
           {
             type: 'text' as const,
-            text: `❌ Invalid request: ${error.message}`,
+            text: `❌ Invalid request: ${(error as Error).message}`,
           },
         ],
       };
@@ -834,7 +834,7 @@ The LLM immediately understands what to do and can execute the intended workflow
         content: [
           {
             type: 'text' as const,
-            text: `❌ Error checking README freshness: ${error.message}`,
+            text: `❌ Error checking README freshness: ${(error as Error).message}`,
           },
         ],
       };
@@ -872,7 +872,7 @@ The LLM immediately understands what to do and can execute the intended workflow
         content: [
           {
             type: 'text' as const,
-            text: `❌ Error listing files with context: ${error.message}`,
+            text: `❌ Error listing files with context: ${(error as Error).message}`,
           },
         ],
       };
@@ -912,7 +912,7 @@ The LLM immediately understands what to do and can execute the intended workflow
         content: [
           {
             type: 'text' as const,
-            text: `❌ Error generating README: ${error.message}`,
+            text: `❌ Error generating README: ${(error as Error).message}`,
           },
         ],
       };

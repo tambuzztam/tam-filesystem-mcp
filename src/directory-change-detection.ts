@@ -415,7 +415,7 @@ export class DirectoryChangeDetectionService {
       c => c.type === 'subdirectory_added' || c.type === 'subdirectory_removed'
     );
     const hasVeryOldReadme = changes.some(
-      c => c.type === 'readme_very_old' && c.details?.ageDays > 90
+      c => c.type === 'readme_very_old' && (c.details as any)?.ageDays > 90
     );
 
     if (hasHighSeverity || hasVeryOldReadme) {

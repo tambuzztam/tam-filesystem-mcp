@@ -84,7 +84,7 @@ export async function getPathInfo(path: string): Promise<{
       modified: stats.mtime,
     };
   } catch (error) {
-    if (error.code === 'ENOENT') {
+    if ((error as any).code === 'ENOENT') {
       return {
         exists: false,
         isFile: false,
