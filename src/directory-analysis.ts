@@ -9,6 +9,10 @@ import { readdir } from 'fs/promises';
 import { join, basename, extname, dirname } from 'path';
 import { validateAndNormalizePath, getPathInfo } from './security.js';
 import { FileInfo } from './enhanced-listing.js';
+import {
+  ReadmeDiscoveryService,
+  ReadmeContentProcessor,
+} from './readme-discovery.js';
 
 export interface DirectoryIntelligence {
   purpose: string; // From user context
@@ -32,6 +36,9 @@ export interface SubdirRole {
   inferredPurpose: string; // What it appears to contain
   fileCount: number; // Size indicator
   keyPatterns: string[]; // Important patterns found
+  readmeContent?: string; // Content from existing README if found
+  readmeTitle?: string; // Title extracted from README
+  hasReadme: boolean; // Whether a README was found
 }
 
 export interface DirectorySuggestion {
@@ -50,7 +57,11 @@ export interface DirectoryValidation {
  * Directory Analysis Service
  */
 export class DirectoryAnalysisService {
-  constructor(private allowedDirectories: string[]) {}
+  private readmeDiscovery: ReadmeDiscoveryService;
+
+  constructor(private allowedDirectories: string[]) {
+    this.readmeDiscovery = new ReadmeDiscoveryService(allowedDirectories);
+  }
 
   /**
    * Analyze a directory to extract intelligence for README generation
@@ -393,6 +404,7 @@ export class DirectoryAnalysisService {
           inferredPurpose: this.inferDirectoryPurposeFromName(subdir.name),
           fileCount: 0,
           keyPatterns: [],
+          hasReadme: false,
         });
       }
     }
@@ -402,6 +414,7 @@ export class DirectoryAnalysisService {
 
   /**
    * Analyze a single subdirectory structure recursively
+   * Now includes README discovery and integration
    */
   private async analyzeSubdirectoryStructure(
     subdir: FileInfo,
@@ -417,6 +430,33 @@ export class DirectoryAnalysisService {
     const patterns = this.detectFileCategories(subdirContents)
       .map(cat => cat.pattern)
       .slice(0, 3);
+
+    // Try to find existing README in this subdirectory
+    let readmeContent: string | undefined;
+    let readmeTitle: string | undefined;
+    let hasReadme = false;
+
+    try {
+      const readmeFile = await this.readmeDiscovery.findReadmeInDirectory(
+        subdir.path
+      );
+      if (
+        readmeFile &&
+        ReadmeContentProcessor.isValidReadmeContent(readmeFile.content)
+      ) {
+        hasReadme = true;
+        readmeContent = ReadmeContentProcessor.truncateContent(
+          readmeFile.content,
+          200
+        );
+        readmeTitle = ReadmeContentProcessor.extractTitle(
+          readmeFile.content,
+          readmeFile.path
+        );
+      }
+    } catch {
+      // Continue without README if discovery fails
+    }
 
     // Analyze nested structure if we have remaining depth
     let nestedStructure = '';
@@ -452,16 +492,32 @@ export class DirectoryAnalysisService {
       }
     }
 
-    // Create enriched purpose description
-    let purpose = this.inferDirectoryPurpose(subdir.name, subdirContents);
+    // Create enriched purpose description, preferring README content
+    let purpose: string;
+    if (hasReadme && readmeContent) {
+      // Use the first meaningful line from the README as the primary description
+      purpose = ReadmeContentProcessor.extractFirstLine(readmeContent);
 
-    // Add structural context if we found nested structure
-    if (nestedStructure) {
-      purpose += ` → Contains: ${nestedStructure}`;
-    } else if (subdirCount > 0 && fileCount === 0) {
-      purpose += ` → Organizes ${subdirCount} subdirectories`;
-    } else if (fileCount > 20) {
-      purpose += ` → Large collection of ${fileCount} files`;
+      // Add structural context as supplementary information
+      if (nestedStructure) {
+        purpose += ` → Contains: ${nestedStructure}`;
+      } else if (subdirCount > 0 && fileCount === 0) {
+        purpose += ` → Organizes ${subdirCount} subdirectories`;
+      } else if (fileCount > 20) {
+        purpose += ` → Large collection of ${fileCount} files`;
+      }
+    } else {
+      // Fall back to inferred purpose if no README
+      purpose = this.inferDirectoryPurpose(subdir.name, subdirContents);
+
+      // Add structural context
+      if (nestedStructure) {
+        purpose += ` → Contains: ${nestedStructure}`;
+      } else if (subdirCount > 0 && fileCount === 0) {
+        purpose += ` → Organizes ${subdirCount} subdirectories`;
+      } else if (fileCount > 20) {
+        purpose += ` → Large collection of ${fileCount} files`;
+      }
     }
 
     return {
@@ -469,6 +525,9 @@ export class DirectoryAnalysisService {
       inferredPurpose: purpose,
       fileCount,
       keyPatterns: patterns,
+      readmeContent,
+      readmeTitle,
+      hasReadme,
     };
   }
 

@@ -13,6 +13,7 @@ import {
   DirectoryIntelligence,
   FileCategory,
 } from './directory-analysis.js';
+import { ReadmeContentProcessor } from './readme-discovery.js';
 
 export interface ReadmeGenerationOptions {
   readmeFilename?: string;
@@ -129,15 +130,43 @@ export class ReadmeGenerationService {
     sections.push(`# ${dirName}\n\n${intelligence.purpose}\n`);
 
     if (verbosity === 'concise') {
-      // Concise mode: Focus primarily on directory structure
+      // Concise mode: Focus primarily on directory structure with README synthesis
       if (intelligence.subdirectoryRoles.length > 0) {
         sections.push('## Directory Structure');
-        sections.push(
-          intelligence.subdirectoryRoles
-            .map(subdir => `- **${subdir.name}/**: ${subdir.inferredPurpose}`)
-            .join('\n')
+
+        // Separate documented and undocumented directories
+        const documentedDirs = intelligence.subdirectoryRoles.filter(
+          subdir => subdir.hasReadme
         );
-        sections.push('');
+        const undocumentedDirs = intelligence.subdirectoryRoles.filter(
+          subdir => !subdir.hasReadme
+        );
+
+        // Show documented directories first with their README-derived descriptions
+        if (documentedDirs.length > 0) {
+          sections.push('**Documented Areas:**');
+          sections.push(
+            documentedDirs
+              .map(subdir => {
+                const title = subdir.readmeTitle
+                  ? ` (${subdir.readmeTitle})`
+                  : '';
+                return `- **${subdir.name}/${title}**: ${subdir.inferredPurpose}`;
+              })
+              .join('\n')
+          );
+          sections.push('');
+        }
+
+        // Show undocumented directories more briefly
+        if (undocumentedDirs.length > 0) {
+          const briefList = undocumentedDirs
+            .map(subdir => `**${subdir.name}/**: ${subdir.inferredPurpose}`)
+            .join('\n');
+          sections.push(documentedDirs.length > 0 ? '**Other Areas:**' : '');
+          sections.push(briefList);
+          sections.push('');
+        }
       }
 
       // Only show key files if they're particularly important (fewer than before)
@@ -152,20 +181,54 @@ export class ReadmeGenerationService {
     } else {
       // Verbose mode: Comprehensive structural analysis with contextual details
 
-      // Subdirectories section (moved to top for emphasis on structure)
+      // Subdirectories section with enhanced README synthesis
       if (intelligence.subdirectoryRoles.length > 0) {
         sections.push('## Directory Structure');
-        sections.push(
-          intelligence.subdirectoryRoles
-            .map(
-              subdir =>
-                `- **${subdir.name}/**: ${subdir.inferredPurpose} (${
-                  subdir.fileCount
-                } items)`
-            )
-            .join('\n')
+
+        const documentedDirs = intelligence.subdirectoryRoles.filter(
+          subdir => subdir.hasReadme
         );
-        sections.push('');
+        const undocumentedDirs = intelligence.subdirectoryRoles.filter(
+          subdir => !subdir.hasReadme
+        );
+
+        // Documented directories with full README context
+        if (documentedDirs.length > 0) {
+          sections.push('### Documented Areas');
+          documentedDirs.forEach(subdir => {
+            const title = subdir.readmeTitle || subdir.name;
+            sections.push(`**${subdir.name}/ (${title})**`);
+            sections.push(
+              `${subdir.inferredPurpose} (${subdir.fileCount} items)`
+            );
+
+            // Include brief excerpt from README if available
+            if (subdir.readmeContent && subdir.readmeContent.length > 50) {
+              const excerpt = ReadmeContentProcessor.truncateContent(
+                subdir.readmeContent,
+                150
+              );
+              sections.push(`*${excerpt}*`);
+            }
+            sections.push('');
+          });
+        }
+
+        // Undocumented directories more briefly
+        if (undocumentedDirs.length > 0) {
+          sections.push(documentedDirs.length > 0 ? '### Other Areas' : '');
+          sections.push(
+            undocumentedDirs
+              .map(
+                subdir =>
+                  `- **${subdir.name}/**: ${subdir.inferredPurpose} (${
+                    subdir.fileCount
+                  } items)`
+              )
+              .join('\n')
+          );
+          sections.push('');
+        }
       }
 
       // Organization section (de-emphasized, focused on patterns rather than individual files)
