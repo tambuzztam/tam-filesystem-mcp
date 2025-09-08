@@ -69,7 +69,9 @@ async function main() {
     `Allowed directories: ${vaultConfig.allowedDirectories.join(', ')}`
   );
   console.error(
-    `Obsidian features: ${vaultConfig.enableObsidianFeatures ? 'enabled' : 'disabled'}`
+    `Obsidian features: ${
+      vaultConfig.enableObsidianFeatures ? 'enabled' : 'disabled'
+    }`
   );
   console.error(
     `Templater-lite: ${vaultConfig.templaterLite ? 'enabled' : 'disabled'}`
