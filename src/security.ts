@@ -38,7 +38,9 @@ export function validateAndNormalizePath(
 
   throw new SecurityError(
     'path_outside_allowed_directories',
-    `Path '${inputPath}' is outside allowed directories: ${allowedDirectories.join(', ')}`
+    `Path '${inputPath}' is outside allowed directories: ${allowedDirectories.join(
+      ', '
+    )}`
   );
 }
 
@@ -81,8 +83,8 @@ export async function getPathInfo(path: string): Promise<{
       size: stats.size,
       modified: stats.mtime,
     };
-  } catch (error: any) {
-    if (error.code === 'ENOENT') {
+  } catch (error) {
+    if ((error as any).code === 'ENOENT') {
       return {
         exists: false,
         isFile: false,
@@ -102,8 +104,7 @@ export function sanitizeFilename(filename: string): string {
       .replace(/[<>:"/\\|?*]/g, '_') // Replace invalid characters
       .replace(/\.+/g, '.') // Replace multiple dots with single dot
       .replace(/^\.+|\.+$/g, '') // Remove leading/trailing dots
-      .trim() || // Remove whitespace
-    'unnamed'
+      .trim() || 'unnamed' // Remove whitespace
   ); // Fallback if empty
 }
 

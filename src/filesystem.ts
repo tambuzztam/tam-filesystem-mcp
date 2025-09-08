@@ -30,6 +30,9 @@ import { ObsidianUtils } from './obsidian.js';
 import { PromptManager } from './prompts.js';
 import { TaskManager } from './tasks.js';
 import { TemplateProcessor } from './templates.js';
+import { EnhancedListingService } from './enhanced-listing.js';
+import { ReadmeGenerationService } from './readme-generation.js';
+import { DirectoryChangeDetectionService } from './directory-change-detection.js';
 
 /**
  * EnhancedFilesystemServer extends the canonical filesystem server
@@ -40,6 +43,9 @@ export class EnhancedFilesystemServer {
   private promptManager: PromptManager;
   private taskManager: TaskManager;
   private templateProcessor: TemplateProcessor;
+  private enhancedListing: EnhancedListingService;
+  private readmeGeneration: ReadmeGenerationService;
+  private changeDetection: DirectoryChangeDetectionService;
 
   constructor(private config: VaultConfig) {
     // Set up the base filesystem server's allowed directories
@@ -50,6 +56,15 @@ export class EnhancedFilesystemServer {
     this.promptManager = new PromptManager(config, this.obsidianUtils);
     this.taskManager = new TaskManager(config, this.obsidianUtils);
     this.templateProcessor = new TemplateProcessor(config);
+    this.enhancedListing = new EnhancedListingService(
+      config.allowedDirectories
+    );
+    this.readmeGeneration = new ReadmeGenerationService(
+      config.allowedDirectories
+    );
+    this.changeDetection = new DirectoryChangeDetectionService(
+      config.allowedDirectories
+    );
   }
 
   /**
@@ -80,6 +95,20 @@ export class EnhancedFilesystemServer {
       description: z.string().describe('Task description'),
       checklist: z.array(z.string()).describe('Checklist items'),
       metadata: z.record(z.any()).optional().describe('Task metadata'),
+    });
+
+    const CreatePromptArgsSchema = z.object({
+      purpose: z
+        .string()
+        .describe(
+          'What the new prompt should help accomplish (e.g., "analyze session transcripts", "create weekly reports")'
+        ),
+      targetFilename: z
+        .string()
+        .optional()
+        .describe(
+          'Optional filename for the new prompt (will be auto-generated if not provided)'
+        ),
     });
 
     // Register tool listing handler that includes ALL tools
@@ -183,6 +212,12 @@ export class EnhancedFilesystemServer {
             inputSchema: zodToJsonSchema(GetPromptedArgsSchema),
           },
           {
+            name: 'create_prompt',
+            description:
+              'Create a new prompt file optimized for the getPrompted functionality. Use when the user says "create a prompt to...", "construct a prompt for...", "make a prompt that...", or similar requests to build new reusable prompts.',
+            inputSchema: zodToJsonSchema(CreatePromptArgsSchema),
+          },
+          {
             name: 'create_task',
             description:
               'Create a new task using Task.md template with auto-populated metadata. Integrates with Obsidian templating system.',
@@ -244,6 +279,110 @@ export class EnhancedFilesystemServer {
               required: ['taskName', 'promptName'],
             },
           },
+
+          // ENHANCED README AND LISTING TOOLS
+          {
+            name: 'check_readme_freshness',
+            description:
+              'Check if a README file is out of date based on directory changes and suggest refresh if needed. Useful for maintaining up-to-date documentation.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                directoryPath: {
+                  type: 'string',
+                  description: 'Directory path to check for README freshness',
+                },
+                includeSnapshot: {
+                  type: 'boolean',
+                  description:
+                    'Whether to create a snapshot for future change detection',
+                  default: true,
+                },
+              },
+              required: ['directoryPath'],
+            },
+          },
+          {
+            name: 'list_files_with_context',
+            description:
+              'List directory contents with contextual README information to orient LLMs to vault structure and purpose. Use this instead of list_directory when you need to understand the context and organization of a directory.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                path: {
+                  type: 'string',
+                  description: 'Directory path to list with context',
+                },
+                maxDepth: {
+                  type: 'number',
+                  description: 'Maximum depth to search for README files',
+                  default: 3,
+                },
+                includeHidden: {
+                  type: 'boolean',
+                  description: 'Include hidden files and directories',
+                  default: false,
+                },
+                summarize: {
+                  type: 'boolean',
+                  description: 'Include AI-generated summary of README content',
+                  default: true,
+                },
+                maxReadmeLength: {
+                  type: 'number',
+                  description: 'Maximum length of README content to include',
+                  default: 500,
+                },
+              },
+              required: ['path'],
+            },
+          },
+          {
+            name: 'generate_readme_for_orientation',
+            description:
+              'Generate a fresh README file in a directory that serves as an LLM task orientation guide. Analyzes directory structure and user context to produce practical workspace intelligence. Always creates new content, replacing any existing README.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                targetDirectory: {
+                  type: 'string',
+                  description:
+                    'Directory path where README should be generated',
+                },
+                userContext: {
+                  type: 'string',
+                  description:
+                    "User-provided background about the directory's purpose and role",
+                },
+                readmeFilename: {
+                  type: 'string',
+                  description: 'Name for the README file',
+                  default: 'README.md',
+                },
+                analysisDepth: {
+                  type: 'number',
+                  description:
+                    'How deep to look into subdirectories for structural context (2-3 levels recommended)',
+                  default: 2,
+                  minimum: 1,
+                  maximum: 4,
+                },
+                maxContentLength: {
+                  type: 'number',
+                  description: 'Maximum length of generated README content',
+                  default: 2000,
+                },
+                verbosity: {
+                  type: 'string',
+                  description:
+                    'Content detail level: "concise" for minimal essential info only, "verbose" for comprehensive details',
+                  enum: ['concise', 'verbose'],
+                  default: 'concise',
+                },
+              },
+              required: ['targetDirectory', 'userContext'],
+            },
+          },
         ],
       };
     });
@@ -270,6 +409,8 @@ export class EnhancedFilesystemServer {
         // ENHANCED OBSIDIAN-AWARE TOOLS
         case 'get_prompted':
           return await this.handleGetPrompted(args);
+        case 'create_prompt':
+          return await this.handleCreatePrompt(args);
         case 'create_task':
           return await this.handleCreateTask(args);
         case 'update_task_progress':
@@ -278,6 +419,14 @@ export class EnhancedFilesystemServer {
           return await this.handleGetTaskStatus(args);
         case 'link_task_to_prompt':
           return await this.handleLinkTaskToPrompt(args);
+
+        // ENHANCED README AND LISTING TOOLS
+        case 'check_readme_freshness':
+          return await this.handleCheckReadmeFreshness(args);
+        case 'list_files_with_context':
+          return await this.handleListFilesWithContext(args);
+        case 'generate_readme_for_orientation':
+          return await this.handleGenerateReadmeForOrientation(args);
 
         default:
           throw new Error(`Unknown tool: ${name}`);
@@ -435,17 +584,113 @@ export class EnhancedFilesystemServer {
           ],
         };
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('handleGetPrompted error:', error);
       return {
         content: [
           {
             type: 'text' as const,
-            text: `❌ Invalid request: ${error.message}`,
+            text: `❌ Invalid request: ${(error as Error).message}`,
           },
         ],
       };
     }
+  }
+
+  private async handleCreatePrompt(args: unknown) {
+    try {
+      const parsed = z
+        .object({
+          purpose: z.string(),
+          targetFilename: z.string().optional(),
+        })
+        .parse(args);
+
+      // Use the built-in prompt constructor functionality
+      const constructorContent = this.getBuiltInPromptConstructor(
+        parsed.purpose
+      );
+
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: constructorContent,
+          },
+        ],
+      };
+    } catch (error) {
+      console.error('handleCreatePrompt error:', error);
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: `❌ Invalid request: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          },
+        ],
+      };
+    }
+  }
+
+  /**
+   * Get the built-in prompt constructor content
+   */
+  private getBuiltInPromptConstructor(purpose: string): string {
+    return `# Prompt Constructor
+
+You are tasked with helping the user create a new prompt file that works perfectly with the \`getPrompted\` functionality.
+
+## Your Mission
+
+Conduct a brief discovery conversation with the user to understand their needs, then create a well-structured prompt file that:
+
+1. **Directs the LLM clearly** using natural language, and role assignment
+2. **Uses variables effectively** for reusability and abstraction  
+3. **Contains actionable instructions** for filesystem operations
+4. **Stands alone** when possible, or gracefully requests missing variables
+
+## Discovery Process
+
+Ask the user targeted questions to understand:
+
+- **Purpose**: What specific task or workflow should this prompt help with?
+- **Context**: Who will use it and when?
+- **Variables**: What information will vary each time? What should be required vs optional?
+- **Actions**: What filesystem operations should typically result from using this prompt?
+- **Structure**: What format or style do they prefer for the output?
+
+The user has indicated their purpose is: **${purpose}**
+
+Use this as a starting point but still ask clarifying questions.
+
+## Your Task
+
+After gathering sufficient information through your discovery conversation:
+
+1. **Generate an appropriate filename** (kebab-case, descriptive)
+2. **Create the prompt file** using \`write_file\` in the vault's configured prompts directory (\`${
+      this.config.promptsPath
+    }\`)
+3. **Structure it properly** with:
+   - YAML frontmatter containing title, description, and prompt-vars
+   - Clear content that works with variable substitution ({{variable}} syntax)
+   - Specific instructions for the LLM on what filesystem actions to take
+   - Template syntax (tp.date.now(), etc.) where appropriate
+
+## Quality Standards
+
+The prompt you create should be optimized so that when someone calls:
+\`\`\`
+get_prompted("your-prompt-name", {variables})
+\`\`\`
+
+The LLM immediately understands what to do and can execute the intended workflow using the available filesystem tools.
+
+---
+
+**Begin the discovery conversation now. Ask your first question to understand what kind of prompt the user needs.**`;
   }
 
   private async handleCreateTask(_args: unknown) {
@@ -494,5 +739,187 @@ export class EnhancedFilesystemServer {
         },
       ],
     };
+  }
+
+  // ENHANCED README AND LISTING TOOL HANDLERS
+  private async handleCheckReadmeFreshness(args: unknown) {
+    try {
+      const parsed = z
+        .object({
+          directoryPath: z.string(),
+          includeSnapshot: z.boolean().optional().default(true),
+        })
+        .parse(args);
+
+      // Find existing README
+      const currentReadme = await this.enhancedListing.findReadmeInDirectory(
+        parsed.directoryPath
+      );
+
+      // Extract README generation date if it exists
+      let readmeAge: Date | undefined;
+      if (currentReadme && currentReadme.content) {
+        const generatedMatch = currentReadme.content.match(
+          /\*Generated on (\d{4}-\d{2}-\d{2})/i
+        );
+        if (generatedMatch) {
+          readmeAge = new Date(generatedMatch[1]);
+        } else if (currentReadme.modified) {
+          readmeAge = currentReadme.modified;
+        }
+      }
+
+      // Detect changes
+      const changeResult = await this.changeDetection.detectChanges(
+        parsed.directoryPath,
+        readmeAge
+      );
+
+      let responseText = `# README Freshness Check: ${
+        parsed.directoryPath
+      }\n\n`;
+
+      if (currentReadme) {
+        responseText += `📄 **Found README:** ${currentReadme.path}\n`;
+        if (readmeAge) {
+          const ageDays = Math.round(
+            (Date.now() - readmeAge.getTime()) / (1000 * 60 * 60 * 24)
+          );
+          responseText += `📅 **Age:** ${ageDays} days old\n\n`;
+        }
+      } else {
+        responseText += `❌ **No README found** in directory\n\n`;
+        responseText += `💡 **Suggestion:** Consider creating a README with \`generate_readme_for_orientation\` to document this directory.\n\n`;
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: responseText,
+            },
+          ],
+        };
+      }
+
+      // Add change detection results
+      if (changeResult.hasSignificantChanges) {
+        const summary =
+          this.changeDetection.generateChangesSummary(changeResult);
+        const prompt = this.changeDetection.getRefreshPrompt(
+          changeResult,
+          parsed.directoryPath
+        );
+
+        responseText += summary;
+
+        if (prompt) {
+          responseText += '\n\n**💬 ' + prompt + '**';
+          responseText +=
+            '\n\n*Use `generate_readme_for_orientation` to refresh the README with current information.*';
+        }
+      } else {
+        responseText +=
+          '📋 **Status:** README appears to be up to date - no significant changes detected.';
+      }
+
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: responseText,
+          },
+        ],
+      };
+    } catch (error) {
+      console.error('handleCheckReadmeFreshness error:', error);
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: `❌ Error checking README freshness: ${(error as Error).message}`,
+          },
+        ],
+      };
+    }
+  }
+
+  private async handleListFilesWithContext(args: unknown) {
+    try {
+      const parsed = z
+        .object({
+          path: z.string(),
+          maxDepth: z.number().optional().default(3),
+          includeHidden: z.boolean().optional().default(false),
+          summarize: z.boolean().optional().default(true),
+          maxReadmeLength: z.number().optional().default(500),
+        })
+        .parse(args);
+
+      const result = await this.enhancedListing.listFilesWithContext(
+        parsed.path,
+        {
+          maxDepth: parsed.maxDepth,
+          includeHidden: parsed.includeHidden,
+          summarize: parsed.summarize,
+          maxReadmeLength: parsed.maxReadmeLength,
+        }
+      );
+
+      return {
+        content: result.content,
+      };
+    } catch (error) {
+      console.error('handleListFilesWithContext error:', error);
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: `❌ Error listing files with context: ${(error as Error).message}`,
+          },
+        ],
+      };
+    }
+  }
+
+  private async handleGenerateReadmeForOrientation(args: unknown) {
+    try {
+      const parsed = z
+        .object({
+          targetDirectory: z.string(),
+          userContext: z.string(),
+          readmeFilename: z.string().optional().default('README.md'),
+          analysisDepth: z.number().min(1).max(4).optional().default(2),
+          maxContentLength: z.number().optional().default(2000),
+          verbosity: z
+            .enum(['concise', 'verbose'])
+            .optional()
+            .default('concise'),
+        })
+        .parse(args);
+
+      const result = await this.readmeGeneration.generateReadmeForOrientation(
+        parsed.targetDirectory,
+        parsed.userContext,
+        {
+          readmeFilename: parsed.readmeFilename,
+          analysisDepth: parsed.analysisDepth,
+          maxContentLength: parsed.maxContentLength,
+          verbosity: parsed.verbosity,
+        }
+      );
+
+      return {
+        content: result.content,
+      };
+    } catch (error) {
+      console.error('handleGenerateReadmeForOrientation error:', error);
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: `❌ Error generating README: ${(error as Error).message}`,
+          },
+        ],
+      };
+    }
   }
 }

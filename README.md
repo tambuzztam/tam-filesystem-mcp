@@ -116,8 +116,28 @@ get_prompted('complex-analysis', variables, {
 });
 ```
 
-### Task Management Tools
+### `create_prompt`
 
+**Built-in prompt constructor** - Create new prompts optimized for getPrompted usage
+
+```typescript
+// Natural language usage - LLM automatically detects intent
+// User: "create a prompt to analyze session transcripts"
+// User: "construct a prompt for weekly report generation"
+// User: "make a prompt that helps with task planning"
+
+// Direct usage
+create_prompt({
+  purpose: 'analyze philosophical counseling sessions',
+  targetFilename: 'session-analysis', // optional
+});
+```
+
+The system includes a built-in prompt constructor that guides users through creating well-structured prompts with proper YAML frontmatter, variable specifications, and optimized content.
+
+### Enhanced Workflow Tools
+
+- **`create_prompt`** - Built-in prompt constructor for creating getPrompted-optimized prompts
 - **`create_task`** - Create tasks from templates with auto-populated metadata
 - **`update_task_progress`** - Programmatic checklist item completion tracking
 - **`get_task_status`** - Comprehensive task analytics and next actions
@@ -147,17 +167,19 @@ console.log(\`Completion: \${status.completionPercentage}%\`);
 
 ## Development Status
 
-🚧 **Current Phase: Project Setup Complete**
+🎯 **Current Phase: Core Prompt System Complete**
 
 - [x] ✅ Project structure and configuration
 - [x] ✅ Type definitions and architecture
 - [x] ✅ Enhanced server framework
 - [x] ✅ Tool registration and routing
-- [ ] 🔄 Core prompt system implementation
-- [ ] 🔄 Obsidian integration features
+- [x] ✅ Core prompt system implementation (getPrompted)
+- [x] ✅ Built-in prompt constructor (create_prompt)
+- [x] ✅ Basic Obsidian integration features
+- [x] ✅ Template processing engine (Templater-lite)
+- [x] ✅ Comprehensive test suite
 - [ ] 🔄 Task management functions
-- [ ] 🔄 Template processing engine
-- [ ] 🔄 Comprehensive test suite
+- [ ] 🔄 Advanced Obsidian features
 
 ### Implementation Roadmap
 

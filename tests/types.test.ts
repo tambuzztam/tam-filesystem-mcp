@@ -2,7 +2,7 @@
  * Test that we can import our types and modules correctly
  */
 
-import type { VaultConfig, ObsidianFile } from '../src/types.js';
+import type { VaultConfig } from '../src/types.js';
 import { ObsidianUtils } from '../src/obsidian.js';
 
 describe('Module Imports', () => {

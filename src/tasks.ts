@@ -36,7 +36,9 @@ export class TaskManager {
     // 3. Create in tasks/ folder with proper naming
     // 4. Return task file path for immediate editing
 
-    return `Task "${name}" would be created with ${checklist.length} checklist items`;
+    return `Task "${name}" would be created with ${
+      checklist.length
+    } checklist items`;
   }
 
   /**
