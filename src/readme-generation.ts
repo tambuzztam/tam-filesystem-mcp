@@ -16,20 +16,13 @@ import {
 
 export interface ReadmeGenerationOptions {
   readmeFilename?: string;
-  preserveExisting?: boolean;
   analysisDepth?: number;
   maxContentLength?: number;
+  verbosity?: 'concise' | 'verbose';
 }
 
 export interface ReadmeGenerationResult {
   content: Array<{ type: string; text: string }>;
-}
-
-export interface UserSection {
-  title: string;
-  content: string;
-  startLine: number;
-  endLine: number;
 }
 
 /**
@@ -52,9 +45,9 @@ export class ReadmeGenerationService {
   ): Promise<ReadmeGenerationResult> {
     const {
       readmeFilename = 'README.md',
-      preserveExisting = true,
       analysisDepth = 1,
       maxContentLength = 2000,
+      verbosity = 'concise',
     } = options;
 
     // Validate directory with suggestions
@@ -85,22 +78,6 @@ export class ReadmeGenerationService {
     );
     const readmePath = join(validPath, readmeFilename);
 
-    // Preserve existing content if requested
-    let existingContent = '';
-    let preservedSections: UserSection[] = [];
-
-    if (preserveExisting) {
-      try {
-        const pathInfo = await getPathInfo(readmePath);
-        if (pathInfo.exists) {
-          existingContent = await readFile(readmePath, 'utf-8');
-          preservedSections = this.extractUserSections(existingContent);
-        }
-      } catch {
-        // File doesn't exist or can't be read - continue with fresh generation
-      }
-    }
-
     // Analyze directory for intelligence
     const intelligence =
       await this.analysisService.analyzeDirectoryIntelligence(
@@ -109,23 +86,19 @@ export class ReadmeGenerationService {
         analysisDepth
       );
 
-    // Generate new README content
-    let newContent = this.generateReadmeContent(intelligence, validPath);
+    // Generate fresh README content
+    let newContent = this.generateReadmeContent(
+      intelligence,
+      validPath,
+      verbosity
+    );
 
     // Truncate if too long
     if (newContent.length > maxContentLength) {
       newContent = this.truncateReadmeContent(newContent, maxContentLength);
     }
 
-    // Merge with preserved content if applicable
-    if (preservedSections.length > 0) {
-      newContent = this.mergeWithPreservedContent(
-        newContent,
-        preservedSections
-      );
-    }
-
-    // Write README file
+    // Write README file (replacing any existing content)
     await writeFile(readmePath, newContent, 'utf-8');
 
     return {
@@ -143,7 +116,8 @@ export class ReadmeGenerationService {
    */
   private generateReadmeContent(
     intelligence: DirectoryIntelligence,
-    directoryPath: string
+    directoryPath: string,
+    verbosity: 'concise' | 'verbose' = 'concise'
   ): string {
     const dirName = this.extractDirectoryName(
       intelligence.purpose,
@@ -151,71 +125,92 @@ export class ReadmeGenerationService {
     );
     const sections: string[] = [];
 
-    // Title and Purpose
-    sections.push(`# ${dirName}\n\n## Purpose\n${intelligence.purpose}\n`);
+    // Title and Purpose (always included)
+    sections.push(`# ${dirName}\n\n${intelligence.purpose}\n`);
 
-    // Organization section
-    if (intelligence.fileCategories.length > 0) {
-      sections.push('## Organization');
-      sections.push(this.formatFileCategories(intelligence.fileCategories));
-      sections.push('');
-    }
+    if (verbosity === 'concise') {
+      // Concise mode: only show key files if they exist
+      if (intelligence.keyFiles.length > 0) {
+        sections.push('**Key Files:**');
+        sections.push(
+          intelligence.keyFiles.map(file => `- **${file}**`).join('\n')
+        );
+        sections.push('');
+      }
 
-    // Key Files section
-    if (intelligence.keyFiles.length > 0) {
-      sections.push('## Key Files');
-      sections.push(
-        intelligence.keyFiles
-          .map(file => {
-            const importance = this.inferFileImportance(file, intelligence);
-            return `- **${file}**: ${importance}`;
-          })
-          .join('\n')
-      );
-      sections.push('');
-    }
+      // Show subdirectories in a compact format
+      if (intelligence.subdirectoryRoles.length > 0) {
+        const subdirList = intelligence.subdirectoryRoles
+          .map(subdir => `**${subdir.name}/**`)
+          .join(', ');
+        sections.push(`**Subdirectories:** ${subdirList}`);
+        sections.push('');
+      }
+    } else {
+      // Verbose mode: include all sections as before
+      // Organization section
+      if (intelligence.fileCategories.length > 0) {
+        sections.push('## Organization');
+        sections.push(this.formatFileCategories(intelligence.fileCategories));
+        sections.push('');
+      }
 
-    // Conventions section
-    if (intelligence.namingPatterns.length > 0) {
-      sections.push('## Conventions');
-      sections.push(
-        intelligence.namingPatterns.map(pattern => `- ${pattern}`).join('\n')
-      );
-      sections.push('');
-    }
+      // Key Files section
+      if (intelligence.keyFiles.length > 0) {
+        sections.push('## Key Files');
+        sections.push(
+          intelligence.keyFiles
+            .map(file => {
+              const importance = this.inferFileImportance(file, intelligence);
+              return `- **${file}**: ${importance}`;
+            })
+            .join('\n')
+        );
+        sections.push('');
+      }
 
-    // Subdirectories section
-    if (intelligence.subdirectoryRoles.length > 0) {
-      sections.push('## Subdirectories');
-      sections.push(
-        intelligence.subdirectoryRoles
-          .map(
-            subdir =>
-              `- **${subdir.name}/**: ${subdir.inferredPurpose} (${
-                subdir.fileCount
-              } items)`
-          )
-          .join('\n')
-      );
-      sections.push('');
-    }
+      // Conventions section
+      if (intelligence.namingPatterns.length > 0) {
+        sections.push('## Conventions');
+        sections.push(
+          intelligence.namingPatterns.map(pattern => `- ${pattern}`).join('\n')
+        );
+        sections.push('');
+      }
 
-    // Usage Patterns section
-    if (intelligence.workflowHints.length > 0) {
-      sections.push('## Usage Patterns');
-      sections.push(
-        intelligence.workflowHints.map(hint => `- ${hint}`).join('\n')
-      );
-      sections.push('');
-    }
+      // Subdirectories section
+      if (intelligence.subdirectoryRoles.length > 0) {
+        sections.push('## Subdirectories');
+        sections.push(
+          intelligence.subdirectoryRoles
+            .map(
+              subdir =>
+                `- **${subdir.name}/**: ${subdir.inferredPurpose} (${
+                  subdir.fileCount
+                } items)`
+            )
+            .join('\n')
+        );
+        sections.push('');
+      }
 
-    // Integration Notes section
-    if (intelligence.integrationNotes.length > 0) {
-      sections.push('## Integration Notes');
-      sections.push(
-        intelligence.integrationNotes.map(note => `- ${note}`).join('\n')
-      );
-      sections.push('');
+      // Usage Patterns section
+      if (intelligence.workflowHints.length > 0) {
+        sections.push('## Usage Patterns');
+        sections.push(
+          intelligence.workflowHints.map(hint => `- ${hint}`).join('\n')
+        );
+        sections.push('');
+      }
+
+      // Integration Notes section
+      if (intelligence.integrationNotes.length > 0) {
+        sections.push('## Integration Notes');
+        sections.push(
+          intelligence.integrationNotes.map(note => `- ${note}`).join('\n')
+        );
+        sections.push('');
+      }
     }
 
     // Footer
@@ -292,163 +287,6 @@ export class ReadmeGenerationService {
 
     // Fall back to directory name
     return basename(directoryPath);
-  }
-
-  /**
-   * Extract user-written sections from existing README
-   */
-  private extractUserSections(content: string): UserSection[] {
-    const lines = content.split('\n');
-    const sections: UserSection[] = [];
-    let currentSection: UserSection | null = null;
-    let inGeneratedContent = false;
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-
-      // Check for generated content marker
-      if (
-        line.includes('Generated on') &&
-        line.includes('for LLM task orientation')
-      ) {
-        inGeneratedContent = true;
-        continue;
-      }
-
-      // Skip generated content
-      if (inGeneratedContent) {
-        continue;
-      }
-
-      // Check for section headers
-      if (line.startsWith('# ') || line.startsWith('## ')) {
-        // Save previous section
-        if (currentSection) {
-          currentSection.endLine = i - 1;
-          sections.push(currentSection);
-        }
-
-        // Start new section
-        currentSection = {
-          title: line,
-          content: '',
-          startLine: i,
-          endLine: i,
-        };
-      } else if (currentSection) {
-        // Add to current section
-        currentSection.content += (currentSection.content ? '\n' : '') + line;
-      }
-    }
-
-    // Save last section
-    if (currentSection && !inGeneratedContent) {
-      currentSection.endLine = lines.length - 1;
-      sections.push(currentSection);
-    }
-
-    // Filter out sections that look generated
-    return sections.filter(
-      section =>
-        !this.looksLikeGeneratedContent(section.content) &&
-        section.content.trim().length > 10
-    );
-  }
-
-  /**
-   * Check if content looks like it was generated
-   */
-  private looksLikeGeneratedContent(content: string): boolean {
-    const indicators = [
-      'Generated on',
-      'for LLM task orientation',
-      'file categories:',
-      'naming patterns:',
-      'key files:',
-      'subdirectories:',
-    ];
-
-    const contentLower = content.toLowerCase();
-    return indicators.some(indicator => contentLower.includes(indicator));
-  }
-
-  /**
-   * Merge generated content with preserved user sections
-   */
-  private mergeWithPreservedContent(
-    newContent: string,
-    preservedSections: UserSection[]
-  ): string {
-    if (preservedSections.length === 0) {
-      return newContent;
-    }
-
-    const lines = newContent.split('\n');
-    const mergedLines: string[] = [];
-    let i = 0;
-
-    // Find insertion points for preserved sections
-    while (i < lines.length) {
-      const line = lines[i];
-
-      // Check if any preserved sections should be inserted here
-      const matchingSection = preservedSections.find(section =>
-        this.shouldInsertSectionHere(section, line, lines, i)
-      );
-
-      if (matchingSection) {
-        // Insert preserved section
-        mergedLines.push('', '## 📝 Notes', '');
-        mergedLines.push(matchingSection.content);
-        mergedLines.push('');
-
-        // Remove this section from the list
-        const index = preservedSections.indexOf(matchingSection);
-        preservedSections.splice(index, 1);
-      }
-
-      mergedLines.push(line);
-      i++;
-    }
-
-    // Add any remaining preserved sections at the end
-    if (preservedSections.length > 0) {
-      mergedLines.push('', '## 📝 Additional Notes', '');
-      for (const section of preservedSections) {
-        mergedLines.push(section.content);
-        mergedLines.push('');
-      }
-    }
-
-    return mergedLines.join('\n');
-  }
-
-  /**
-   * Determine where to insert a preserved section
-   */
-  private shouldInsertSectionHere(
-    section: UserSection,
-    currentLine: string,
-    allLines: string[],
-    currentIndex: number
-  ): boolean {
-    // Insert before the footer (generated marker)
-    if (currentLine.startsWith('---') || currentLine.includes('Generated on')) {
-      return true;
-    }
-
-    // Insert after integration notes or usage patterns
-    if (currentIndex > 0) {
-      const previousLine = allLines[currentIndex - 1];
-      if (
-        previousLine.includes('Integration Notes') ||
-        previousLine.includes('Usage Patterns')
-      ) {
-        return true;
-      }
-    }
-
-    return false;
   }
 
   /**

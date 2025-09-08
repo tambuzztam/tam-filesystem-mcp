@@ -340,7 +340,7 @@ export class EnhancedFilesystemServer {
           {
             name: 'generate_readme_for_orientation',
             description:
-              'Generate or refresh a README file in a directory that serves as an LLM task orientation guide. Analyzes directory structure and integrates user context to produce practical workspace intelligence.',
+              'Generate a fresh README file in a directory that serves as an LLM task orientation guide. Analyzes directory structure and user context to produce practical workspace intelligence. Always creates new content, replacing any existing README.',
             inputSchema: {
               type: 'object',
               properties: {
@@ -359,12 +359,6 @@ export class EnhancedFilesystemServer {
                   description: 'Name for the README file',
                   default: 'README.md',
                 },
-                preserveExisting: {
-                  type: 'boolean',
-                  description:
-                    'Whether to preserve existing manual content when updating',
-                  default: true,
-                },
                 analysisDepth: {
                   type: 'number',
                   description:
@@ -377,6 +371,13 @@ export class EnhancedFilesystemServer {
                   type: 'number',
                   description: 'Maximum length of generated README content',
                   default: 2000,
+                },
+                verbosity: {
+                  type: 'string',
+                  description:
+                    'Content detail level: "concise" for minimal essential info only, "verbose" for comprehensive details',
+                  enum: ['concise', 'verbose'],
+                  default: 'concise',
                 },
               },
               required: ['targetDirectory', 'userContext'],
@@ -886,9 +887,12 @@ The LLM immediately understands what to do and can execute the intended workflow
           targetDirectory: z.string(),
           userContext: z.string(),
           readmeFilename: z.string().optional().default('README.md'),
-          preserveExisting: z.boolean().optional().default(true),
           analysisDepth: z.number().min(1).max(3).optional().default(1),
           maxContentLength: z.number().optional().default(2000),
+          verbosity: z
+            .enum(['concise', 'verbose'])
+            .optional()
+            .default('concise'),
         })
         .parse(args);
 
@@ -897,9 +901,9 @@ The LLM immediately understands what to do and can execute the intended workflow
         parsed.userContext,
         {
           readmeFilename: parsed.readmeFilename,
-          preserveExisting: parsed.preserveExisting,
           analysisDepth: parsed.analysisDepth,
           maxContentLength: parsed.maxContentLength,
+          verbosity: parsed.verbosity,
         }
       );
 
